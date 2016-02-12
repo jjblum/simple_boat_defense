@@ -28,17 +28,17 @@ background = fig.canvas.copy_from_bbox(ax.bbox)  # must be below fig.show()!
 fig.canvas.draw()
 
 
-def plotSystem(boat_list_in, title_string, plot_time):
+def plotSystem(assets, defenders, attackers, title_string, plot_time):
     # gather the X and Y locations of all boats
-    defenders_x = [boat.state[0] for boat in boat_list_in if boat.type == "defender"]
-    attackers_x = [boat.state[0] for boat in boat_list_in if boat.type == "attacker"]
-    assets_x = [boat.state[0] for boat in boat_list_in if boat.type == "asset"]
-    defenders_y = [boat.state[1] for boat in boat_list_in if boat.type == "defender"]
-    attackers_y = [boat.state[1] for boat in boat_list_in if boat.type == "attacker"]
-    assets_y = [boat.state[1] for boat in boat_list_in if boat.type == "asset"]
-    defenders_th = [boat.state[4] for boat in boat_list_in if boat.type == "defender"]
-    attackers_th = [boat.state[4] for boat in boat_list_in if boat.type == "attacker"]
-    assets_th = [boat.state[4] for boat in boat_list_in if boat.type == "asset"]
+    defenders_x = [boat.state[0] for boat in defenders]
+    attackers_x = [boat.state[0] for boat in attackers]
+    assets_x = [boat.state[0] for boat in assets]
+    defenders_y = [boat.state[1] for boat in defenders]
+    attackers_y = [boat.state[1] for boat in attackers]
+    assets_y = [boat.state[1] for boat in assets]
+    defenders_th = [boat.state[4] for boat in defenders]
+    attackers_th = [boat.state[4] for boat in attackers]
+    assets_th = [boat.state[4] for boat in assets]
 
     # find the bounds
     mean_x = numpy.mean(assets_x)
@@ -99,7 +99,7 @@ def plotSystem(boat_list_in, title_string, plot_time):
 
 
 # spawn boats objects
-num_boats = 10
+num_boats = 100
 boat_list = [Boat.Boat() for i in range(0, num_boats)]
 
 # set boat types
@@ -107,37 +107,38 @@ boat_list[0].type = "asset"
 for b in boat_list[-4:-1]:
     b.type = "attacker"
 
-attackers = [b.uniqueID for b in boat_list if b.type == "attacker"]
-defenders = [b.uniqueID for b in boat_list if b.type == "defender"]
-assets = [b.uniqueID for b in boat_list if b.type == "asset"]
+attackers = [b for b in boat_list if b.type == "attacker"]
+defenders = [b for b in boat_list if b.type == "defender"]
+assets = [b for b in boat_list if b.type == "asset"]
 for b in boat_list:
+    b.boatList = boat_list
     b.attackers = attackers
     b.defenders = defenders
     b.assets = assets
 
 # set initial positions
 # # asset always starts at 0,0
-for uid in assets:
-    boat_list[uid].state[0] = 0.0
-    boat_list[uid].state[1] = 0.0
+for b in assets:
+    b.state[0] = 0.0
+    b.state[1] = 0.0
 # # defenders always start at some uniform random polar location, radius between 6 and 14
-for uid in defenders:
+for b in defenders:
     radius = numpy.random.uniform(6.0, 14.0)
     angle = numpy.random.uniform(0.0, 2*math.pi, 2)
     x = radius*math.cos(angle[0])
     y = radius*math.sin(angle[0])
-    boat_list[uid].state[0] = x
-    boat_list[uid].state[1] = y
-    boat_list[uid].state[4] = angle[1]
+    b.state[0] = x
+    b.state[1] = y
+    b.state[4] = angle[1]
 # # attackers always start at some uniform random polar location, fixed radius 30
-for uid in attackers:
+for b in attackers:
     radius = 20.0
     angle = numpy.random.uniform(0.0, 2*math.pi, 2)
     x = radius*math.cos(angle[0])
     y = radius*math.sin(angle[0])
-    boat_list[uid].state[0] = x
-    boat_list[uid].state[1] = y
-    boat_list[uid].state[4] = angle[1]
+    b.state[0] = x
+    b.state[1] = y
+    b.state[4] = angle[1]
 
 # plotSystem(boat_list, "Initial positions", 0)
 
@@ -148,6 +149,8 @@ step = 1
 for b in boat_list:
     if b.type == "asset":
         b.strategy = Strategies.ChangeHeading(b, numpy.pi/2.0)
+    else:
+        b.strategy = Strategies.PointAtAsset(b)
 while t < 20:
     times = numpy.linspace(t, t+dt, 2)
     for b in boat_list:
@@ -159,10 +162,10 @@ while t < 20:
             # b.moment = numpy.random.uniform(-25*0.3556, 25*0.3556)
         else:
             None
-            b.thrustSurge = numpy.random.uniform(0, 50)
-            b.moment = numpy.random.uniform(-25*0.3556, 25*0.3556)
+            #b.thrustSurge = numpy.random.uniform(0, 50)
+            #b.moment = numpy.random.uniform(-25*0.3556, 25*0.3556)
         states = spi.odeint(Boat.ode, b.state, times, (b,))
         b.state = states[1]
     t += dt
     step += 1
-    plotSystem(boat_list, "My extra special run", t)
+    plotSystem(assets, defenders, attackers, "My extra special run", t)

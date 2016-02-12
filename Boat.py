@@ -54,7 +54,8 @@ class Boat(object):
         self._attackers = []  # list of attacker objects
         self._assets = []  # list of asset objects (usually just 1)
         self._defenders = []  # list of defender objects
-        self._strategy = Strategies.DoNothing()
+        self._boatList = []
+        self._strategy = Strategies.DoNothing(self)
         self._design = Designs.TankDriveDesign()
         Boat.idCount += 1
 
@@ -173,6 +174,14 @@ class Boat(object):
     def defenders(self, defenders_in):
         self._defenders = defenders_in
         self._strategy.defenders = defenders_in
+
+    @property
+    def boatList(self):
+        return self._boatList
+
+    @boatList.setter
+    def boatList(self, boatList_in):
+        self._boatList = boatList_in
 
     @property
     def strategy(self):
