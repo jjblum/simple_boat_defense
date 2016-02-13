@@ -2,10 +2,33 @@ import numpy
 import abc
 import math
 import Boat
-
+import copy
 
 def wrapToPi(angle):
     return (angle + numpy.pi) % (2 * numpy.pi) - numpy.pi
+
+
+class UniversalPID(object):
+    def __init__(self, P, I, D, t, name):
+        self._P = P
+        self._I = I
+        self._D = D
+        self._t = t
+        self._tOld = t
+        self._errorDerivative = 0.0
+        self._errorAccumulation = 0.0
+        self._errorOld = 0.0
+        self._name = name
+
+    def signal(self, error, t):
+        dt = t - self._t
+        self._t = t
+        self._errorDerivative = 0.0
+        if dt > 0:
+            self._errorDerivative = (error - self._errorOld)/dt
+        self._errorAccumulation += dt*error
+        return self._P*error + self._I*self._errorAccumulation + self._D*self._errorDerivative
+
 
 
 class Controller(object):
@@ -79,31 +102,25 @@ class HeadingOnlyPID(Controller):
         self.time = boat.time
         self._error_th_old = 0.0
         self._error_th_accum = 0.0
+        self._headingPID = UniversalPID(1.0, 0.0, 20.0, boat.time, "heading_PID")
 
     def actuationEffortFractions(self):
-        dt = self.boat.time - self.time
-        self.time = self.boat.time
-
         thrustFraction = 0.0
         momentFraction = 0.0
         state = self.boat.state
         th = state[4]
         ideal_th = self.idealState[4]
         error_th = wrapToPi(th - ideal_th)
-        P = 1.0
-        I = 0.0
-        D = 20.0
-        error_th_dot = 0.0
-        if dt > 0:
-            error_th_dot = (error_th - self._error_th_old)/dt
-            self._error_th_old = error_th
-        self._error_th_accum += dt*error_th
-        error_th_signal = P*error_th + I*self._error_th_accum + D*error_th_dot
+
+        error_th_signal = self._headingPID.signal(error_th, self.boat.time)
+        self.time = self.boat.time
+
         momentFraction = numpy.clip(error_th_signal, -1.0, 1.0)
+
 
         if math.fabs(error_th) < 1.0*math.pi/180.0 and math.fabs(state[5]) < 0.5*math.pi/180.0:
             # angle error and angluar speed are both very low, turn off the controller
-            self.boat.strategy.controller = DoNothing()
+            # self.boat.strategy.controller = DoNothing()
             return 0.0, 0.0
 
         return 0.0, momentFraction
@@ -115,19 +132,33 @@ class PointAndShootPID(Controller):
         super(PointAndShootPID, self).__init__()
         self._boat = boat
         self.time = boat.time
+        self._headingPID = UniversalPID(1.0, 0.0, 20.0, boat.time, "heading_PID")
+        # self._positionPID = UniversalPID(1.0, 0.0, 0.0, boat.time, "position_PID")
+        self._surgeVelocityPID = UniversalPID(10.0, 0.0, 0.0, boat.time, "surgeVelocity_PID")
 
     def actuationEffortFractions(self):
-        dt = self.boat.time - self.time
-        self.time = self.boat.time
-
         thrustFraction = 0.0
         momentFraction = 0.0
         state = self.boat.state
 
         error_x = state[0] - self.idealState[0]
         error_y = state[1] - self.idealState[1]
+        error_pos = math.sqrt(math.pow(error_x, 2.0) + math.pow(error_y, 2.0))
         error_u = state[2] - self.idealState[2]
+
         angleToGoal = math.atan2(error_y, error_x)
-        error_th = state[4] - angleToGoal #  error between heading and heading to idealStates
+        error_th = state[4] - angleToGoal  # error between heading and heading to idealStates
+
+        error_th_signal = self._headingPID.signal(error_th, self.boat.time)
+        # error_pos_signal = self._positionPID.signal(error_pos, self.boat.time)
+        error_u_signal = -1.0*self._headingPID.signal(error_u, self.boat.time)
+
+        print "u error = {}, u signal = {}".format(error_u, error_u_signal)
+
+        self.time = self.boat.time
+
+        momentFraction = numpy.clip(error_th_signal, -1.0, 1.0)
+        # thrustFraction = numpy.clip(error_pos_signal, -1.0, 1.0)
+        thrustFraction = numpy.clip(error_u_signal, -1.0, 1.0)
 
         return thrustFraction, momentFraction

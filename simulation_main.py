@@ -99,7 +99,7 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
 
 
 # spawn boats objects
-num_boats = 100
+num_boats = 10
 boat_list = [Boat.Boat() for i in range(0, num_boats)]
 
 # set boat types
@@ -148,18 +148,20 @@ dt = GLOBAL_DT
 step = 1
 for b in boat_list:
     if b.type == "asset":
-        b.strategy = Strategies.ChangeHeading(b, numpy.pi/2.0)
+        #b.strategy = Strategies.ChangeHeading(b, numpy.pi/2.0)
+        b.strategy = Strategies.HoldHeading(b, 0.25, t)
     else:
         b.strategy = Strategies.PointAtAsset(b)
-while t < 20:
+while t < 5:
     times = numpy.linspace(t, t+dt, 2)
     for b in boat_list:
         b.time = t
         b.control()
         if b.type == "asset":
             None
-            # b.thrustSurge = numpy.random.uniform(0, 50)
-            # b.moment = numpy.random.uniform(-25*0.3556, 25*0.3556)
+            print b.state[2]
+            #b.thrustSurge = numpy.random.uniform(0, 50)
+            #b.moment = numpy.random.uniform(-25*0.3556, 25*0.3556)
         else:
             None
             #b.thrustSurge = numpy.random.uniform(0, 50)

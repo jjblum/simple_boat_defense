@@ -14,19 +14,19 @@ def ode(state,t,boat):
     w = state[3]
     th = state[4]
     thdot = state[5]
-    au = boat.dragAreas[0]
-    aw = boat.dragAreas[1]
-    ath = boat.dragAreas[2]
-    cu = boat.dragCoeffs[0]
-    cw = boat.dragCoeffs[1]
-    cth = boat.dragCoeffs[2]
+    au = boat.design.dragAreas[0]
+    aw = boat.design.dragAreas[1]
+    ath = boat.design.dragAreas[2]
+    cu = boat.design.dragCoeffs[0]
+    cw = boat.design.dragCoeffs[1]
+    cth = boat.design.dragCoeffs[2]
     qdot = numpy.zeros((6,))
     qdot[0] = u*math.cos(th) - w*math.sin(th)
     qdot[1] = u*math.sin(th) + w*math.cos(th)
-    qdot[2] = boat.thrustSurge/boat.mass - 0.5*rho*au*cu*math.fabs(u)*u
-    qdot[3] = boat.thrustSway/boat.mass - 0.5*rho*aw*cw*math.fabs(w)*w
+    qdot[2] = boat.thrustSurge/boat.design.mass - 0.5*rho*au*cu*math.fabs(u)*u
+    qdot[3] = boat.thrustSway/boat.design.mass - 0.5*rho*aw*cw*math.fabs(w)*w
     qdot[4] = thdot
-    qdot[5] = boat.moment/boat.momentOfInertia - 0.5*rho*ath*cth*math.fabs(thdot)*thdot
+    qdot[5] = boat.moment/boat.design.momentOfInertia - 0.5*rho*ath*cth*math.fabs(thdot)*thdot
     return qdot
 
 
@@ -40,16 +40,11 @@ class Boat(object):
         # state: [x y u w th thdot]
         self._uniqueID = Boat.idCount
         self._type = "defender"  # can be defender, asset, or attacker
-        self._mass = 5.7833  # [kg]
-        self._momentOfInertia = 0.6  # [kg/m^2]
         self._thrustSurge = 0.0  # surge thrust [N]
         self._thrustSway = 0.0  # sway thrust (zero for tank drive) [N]
         self._moment = 0.0  # [Nm]
         self._thrustFraction = 0.0
         self._momentFraction = 0.0
-        self._dragAreas = [0.0108589939, 0.0424551192, 0.0424551192]  # surge, sway, rotation [m^2]
-        # self._dragCoeffs = [0.258717640651218, 1.088145891415693, 0.048292066650533]  # surge, sway, rotation [-]
-        self._dragCoeffs = [0.258717640651218, 1.088145891415693, 1.05]  # surge, sway, rotation [-]
         self._timeToDefend = []  # [a vector of numbers, roughly representing distances radially away from an asset]
         self._attackers = []  # list of attacker objects
         self._assets = []  # list of asset objects (usually just 1)
@@ -91,30 +86,6 @@ class Boat(object):
     @type.setter
     def type(self,type_in):
         self._type = type_in
-
-    @property
-    def mass(self):
-        return self._mass
-
-    @property
-    def momentOfInertia(self):
-        return self._momentOfInertia
-
-    @property
-    def dragAreas(self):
-        return self._dragAreas
-
-    @property
-    def dragCoeffs(self):
-        return self._dragCoeffs
-
-    @property
-    def dragAreas(self):
-        return self._dragAreas
-
-    @property
-    def dragCoeffs(self):
-        return self._dragCoeffs
 
     @property
     def thrustSurge(self):
@@ -190,14 +161,6 @@ class Boat(object):
     @strategy.setter
     def strategy(self, strategy_in):
         self._strategy = strategy_in
-
-    #@property
-    #def controller(self):
-    #    return self._controller
-
-    #@controller.setter
-    #def controller(self, controller_in):
-    #    self._controller = controller_in
 
     @property
     def design(self):

@@ -9,7 +9,6 @@ import Controllers
 #  def strategyBatonPass(strategy_in, strategy_out_type):
 
 
-
 class Strategy(object):
     __metaclass__ = abc.ABCMeta
 
@@ -139,20 +138,18 @@ class HoldHeading(Strategy):
     def idealState(self):
         # rabbit boat moves forward at fixed velocity
         state = numpy.zeros((6,))
-        x = self.boat.state[0]
-        y = self.boat.state[1]
         u = self._surgeVelocity
-        w = self.boat.state[3]
         th = self.boat.state[4]
         thdot = self.boat.state[5]
         time_expired = self.time - self._t0
-        state[0] = x + u*math.cos(th)*time_expired
-        state[1] = y + u*math.sin(th)*time_expired
+        state[0] = self.boat.state[0] + u*math.cos(th)*time_expired
+        state[1] = self.boat.state[1] + u*math.sin(th)*time_expired
         state[2] = u
-        state[3] = w
-        state[4] = self.boat.state[4]
+        state[3] = self.boat.state[3]
+        state[4] = th
         state[5] = 0
         self.controller.idealState = state  # update this here so the controller doesn't need to import Strategies
+        print "ideal state = {}".format(state)
         return state
 
 
@@ -177,17 +174,17 @@ class DestinationOnly(Strategy):
 
 class PointAtAsset(Strategy):
     # a strategy that just points the boat at the geometric mean of the assets
-    # an example of a NESTED strategy
+    # an example of a NESTED STRATEGY
     def __init__(self, boat):
         super(PointAtAsset, self).__init__(boat)
         self._strategy = ChangeHeading(boat, 0.0)  # the lower level nested strategy
         self.controller = self._strategy.controller
 
-    @property
+    @property  # need to override the standard controller property with the nested strategy's controller
     def controller(self):
         return self._strategy.controller
 
-    @controller.setter
+    @controller.setter  # need to override the standard controller property with the nested strategy's controller
     def controller(self, controller):
         self._controller = controller
 
