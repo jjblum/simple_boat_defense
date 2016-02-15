@@ -79,15 +79,21 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
                         horizontalalignment='right', verticalalignment='bottom',
                         transform=ax.transAxes, size=20)
     asset_position_text = ax.text(0.5*(left + right), bottom,
-                                  "asset (x,y) = {:.1f},{:.1f}".format(mean_x, mean_y),
+                                  "asset (x,y) = {:.2f},{:.2f}".format(mean_x, mean_y),
                                   horizontalalignment='center', verticalalignment='bottom',
                                   transform=ax.transAxes, size=20)
     title_text = ax.text(left, top, "{s}".format(s=title_string),
                          horizontalalignment='left', verticalalignment='bottom',
                          transform=ax.transAxes, size=20)
+    real_time_passed = time.time() - real_time_zero
+    time_ratio = assets[0].time/real_time_passed
+    time_ratio_text = ax.text(right, top - 0.03, "speed = {:.2f}x".format(time_ratio),
+                        horizontalalignment='right', verticalalignment='bottom',
+                        transform=ax.transAxes, size=20)
     ax.draw_artist(title_text)
     ax.draw_artist(asset_position_text)
     ax.draw_artist(time_text)
+    ax.draw_artist(time_ratio_text)
     for defender_arrow in defender_arrows:
         ax.draw_artist(defender_arrow)
     for attacker_arrow in attacker_arrows:
@@ -99,7 +105,7 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
 
 
 # spawn boats objects
-num_boats = 10
+num_boats = 20
 boat_list = [Boat.Boat() for i in range(0, num_boats)]
 
 # set boat types
@@ -143,27 +149,36 @@ for b in attackers:
 # plotSystem(boat_list, "Initial positions", 0)
 
 # move asset using ODE integration
+real_time_zero = time.time()
 t = 0.0
 dt = GLOBAL_DT
 step = 1
 for b in boat_list:
     if b.type == "asset":
-        #b.strategy = Strategies.ChangeHeading(b, numpy.pi/2.0)
-        b.strategy = Strategies.HoldHeading(b, 0.25, t)
+        # asset_u0 = 0.1
+        # b.state = numpy.array([0.0, 0.0, asset_u0, 0.0, 0.0, 0.0])
+        # b.strategy = Strategies.DestinationOnly(b, [-5, 5], 5.0)
+        b.strategy = Strategies.ChangeHeading(b, numpy.pi/2.0)
+        # b.strategy = Strategies.HoldHeading(b, 1.5, t)
     else:
-        b.strategy = Strategies.PointAtAsset(b)
-while t < 5:
+        # b.strategy = Strategies.PointAtAsset(b)
+        # b.strategy = Strategies.HoldHeading(b, 1.5)
+        b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b), Strategies.HoldHeading(b, 2.0)])
+while t < 20:
     times = numpy.linspace(t, t+dt, 2)
     for b in boat_list:
         b.time = t
         b.control()
         if b.type == "asset":
             None
-            print b.state[2]
+            # if b.state[2] < 0.01:  #0.05*asset_u0:
+            #     print "time = {}, distance = {}".format(t, b.state[0])
+            #print "asset surge velocity = {}".format(b.state[2])
             #b.thrustSurge = numpy.random.uniform(0, 50)
             #b.moment = numpy.random.uniform(-25*0.3556, 25*0.3556)
         else:
             None
+            # print "boat {} surge velocity = {}".format(b.uniqueID, b.state[2])
             #b.thrustSurge = numpy.random.uniform(0, 50)
             #b.moment = numpy.random.uniform(-25*0.3556, 25*0.3556)
         states = spi.odeint(Boat.ode, b.state, times, (b,))

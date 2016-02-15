@@ -3,6 +3,10 @@ import math
 import abc
 import Boat
 
+# TODO - figure out why linear drag is completely dominating the drag down times!
+#        This seems super unrealistic. Nonlinear drag is getting it into the linear regime quickly,
+#        and then linear drag dominates in a ridiculous way. Fix it.
+
 
 class Design(object):
     # abstract class, a design dictates how actuation fractions are translated into actual thrust and moment
@@ -52,7 +56,20 @@ class Lutra(Design):
         self._momentOfInertia = 0.6  # [kg/m^2]
         self._dragAreas = [0.0108589939, 0.0424551192, 0.0424551192]  # surge, sway, rotation [m^2]
         # self._dragCoeffs = [0.258717640651218, 1.088145891415693, 0.048292066650533]  # surge, sway, rotation [-]
-        self._dragCoeffs = [0.258717640651218, 1.088145891415693, 5.0]  # surge, sway, rotation [-]
+        self._dragCoeffs = [1.5, 1.088145891415693, 2.0]  # surge, sway, rotation [-]
+        self._dragDownCurve = numpy.zeros((7, 3))  # u0, time to u = 0.01, d to u = 0.01
+        self._dragDownCurve[0, :] = numpy.array([0.1, 2.55, 0.1])
+        self._dragDownCurve[1, :] = numpy.array([0.2, 3.2, 0.19])
+        self._dragDownCurve[2, :] = numpy.array([0.5, 4.8, 0.73])
+        self._dragDownCurve[3, :] = numpy.array([1.0, 5.5, 1.22])
+        self._dragDownCurve[4, :] = numpy.array([1.5, 5.75, 1.51])
+        self._dragDownCurve[5, :] = numpy.array([2.0, 5.85, 1.71])
+        self._dragDownCurve[6, :] = numpy.array([2.5, 5.95, 1.90])
+
+    def interpolateDragDown(self, u0):
+        time = numpy.interp(u0, self._dragDownCurve[:, 0], self._dragDownCurve[:, 1])
+        distance = numpy.interp(u0, self._dragDownCurve[:, 0], self._dragDownCurve[:, 2])
+        return time, distance
 
 
 class TankDriveDesign(Lutra):

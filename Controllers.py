@@ -4,12 +4,29 @@ import math
 import Boat
 import copy
 
+
 def wrapToPi(angle):
     return (angle + numpy.pi) % (2 * numpy.pi) - numpy.pi
 
 
+def dragDown(boat):
+    # http://physics.stackexchange.com/questions/72503/how-do-i-calculate-the-distance-a-ship-will-take-to-stop
+    # rho = 1000.0
+    # L = boat.design.dragAreas[0]*rho*boat.design.dragCoeffs[0]/(2.0*boat.design.mass)
+    # t_half = L/boat.state[2]
+    # #surge drag = -1/L*surge velocity^2
+    # #surge velocity = L/(t + t_half)
+    # #t_half is the time it takes to reduce the speed to half the original value
+    # #distance = L*ln( (t + t_half) / t_half )
+    # #time required for 90% reduction in speed is 9*t_half
+    # timeTo90pcReduction = 9.0*t_half
+    # distanceTo90pcReduction = 2.3*L
+    return boat.design.interpolateDragDown(boat.state[2])
+
+
 class UniversalPID(object):
-    def __init__(self, P, I, D, t, name):
+    def __init__(self, boat, P, I, D, t, name):
+        self._boat = boat
         self._P = P
         self._I = I
         self._D = D
@@ -21,6 +38,8 @@ class UniversalPID(object):
         self._name = name
 
     def signal(self, error, t):
+        #if self._boat.type == "asset":
+        #    print "{} PID new time = {},  current time = {},  dt = {}".format(self._name, t, self._t, t-self._t)
         dt = t - self._t
         self._t = t
         self._errorDerivative = 0.0
@@ -28,7 +47,6 @@ class UniversalPID(object):
             self._errorDerivative = (error - self._errorOld)/dt
         self._errorAccumulation += dt*error
         return self._P*error + self._I*self._errorAccumulation + self._D*self._errorDerivative
-
 
 
 class Controller(object):
@@ -102,7 +120,7 @@ class HeadingOnlyPID(Controller):
         self.time = boat.time
         self._error_th_old = 0.0
         self._error_th_accum = 0.0
-        self._headingPID = UniversalPID(1.0, 0.0, 20.0, boat.time, "heading_PID")
+        self._headingPID = UniversalPID(boat, 1.0, 0.0, 1.0, boat.time, "heading_PID")
 
     def actuationEffortFractions(self):
         thrustFraction = 0.0
@@ -117,48 +135,99 @@ class HeadingOnlyPID(Controller):
 
         momentFraction = numpy.clip(error_th_signal, -1.0, 1.0)
 
-
         if math.fabs(error_th) < 1.0*math.pi/180.0 and math.fabs(state[5]) < 0.5*math.pi/180.0:
             # angle error and angluar speed are both very low, turn off the controller
             # self.boat.strategy.controller = DoNothing()
+            self.boat.strategy.strategy.finished = True
             return 0.0, 0.0
 
         return 0.0, momentFraction
 
 
-class PointAndShootPID(Controller):
+class SurgeAndHeadingPID(Controller):
 
     def __init__(self, boat):
-        super(PointAndShootPID, self).__init__()
+        super(SurgeAndHeadingPID, self).__init__()
         self._boat = boat
         self.time = boat.time
-        self._headingPID = UniversalPID(1.0, 0.0, 20.0, boat.time, "heading_PID")
-        # self._positionPID = UniversalPID(1.0, 0.0, 0.0, boat.time, "position_PID")
-        self._surgeVelocityPID = UniversalPID(10.0, 0.0, 0.0, boat.time, "surgeVelocity_PID")
+        self._headingPID = UniversalPID(boat, 1.0, 0.0, 1.0, boat.time, "heading_PID")
+        self._surgeVelocityPID = UniversalPID(boat, 2.0, 1.0, 0.0, boat.time, "surgeVelocity_PID")
 
     def actuationEffortFractions(self):
         thrustFraction = 0.0
         momentFraction = 0.0
         state = self.boat.state
 
-        error_x = state[0] - self.idealState[0]
-        error_y = state[1] - self.idealState[1]
-        error_pos = math.sqrt(math.pow(error_x, 2.0) + math.pow(error_y, 2.0))
+        error_x = self.idealState[0] - state[0]
+        error_y = self.idealState[1] - state[1]
         error_u = state[2] - self.idealState[2]
 
         angleToGoal = math.atan2(error_y, error_x)
-        error_th = state[4] - angleToGoal  # error between heading and heading to idealStates
+        error_th = wrapToPi(state[4] - angleToGoal)  # error between heading and heading to idealStates
+
+        #print "boat {} heading error = {} \n\tdx = {}, dy = {}\n\tangleToGoal = {}".format(self.boat.uniqueID, error_th, error_x, error_y,angleToGoal)
 
         error_th_signal = self._headingPID.signal(error_th, self.boat.time)
-        # error_pos_signal = self._positionPID.signal(error_pos, self.boat.time)
-        error_u_signal = -1.0*self._headingPID.signal(error_u, self.boat.time)
+        error_u_signal = -1.0*self._surgeVelocityPID.signal(error_u, self.boat.time)
 
-        print "u error = {}, u signal = {}".format(error_u, error_u_signal)
+        #if self.boat.type == "asset":
+        #    print "u error = {}, u signal = {}".format(error_u, error_u_signal)
 
         self.time = self.boat.time
 
         momentFraction = numpy.clip(error_th_signal, -1.0, 1.0)
         # thrustFraction = numpy.clip(error_pos_signal, -1.0, 1.0)
         thrustFraction = numpy.clip(error_u_signal, -1.0, 1.0)
+
+        return thrustFraction, momentFraction
+
+
+class PointAndShootPID(Controller):
+
+    def __init__(self, boat, positionThreshold):
+        super(PointAndShootPID, self).__init__()
+        self._boat = boat
+        self.time = boat.time
+        self._positionThreshhold = positionThreshold
+        self._headingPID = UniversalPID(boat, 1.0, 0.0, 1.0, boat.time, "heading_PID")
+        self._positionPID = UniversalPID(boat, 0.5, 0.01, 10.0, boat.time, "position_PID")
+        self._headingErrorSurgeCutoff = 90.0*math.pi/180.0  # thrust signal rolls off as a cosine, hitting zero here
+
+    def actuationEffortFractions(self):
+        thrustFraction = 0.0
+        momentFraction = 0.0
+        state = self.boat.state
+
+        error_x = self.idealState[0] - state[0]
+        error_y = self.idealState[1] - state[1]
+        error_pos = math.sqrt(math.pow(error_x, 2.0) + math.pow(error_y, 2.0))
+
+        # if the position error is less than some threshold, turn thrustFraction to 0
+        if error_pos < self._positionThreshhold:
+            return 0.0, 0.0
+
+        angleToGoal = math.atan2(error_y, error_x)
+        error_th = wrapToPi(state[4] - angleToGoal)  # error between heading and heading to idealStates
+
+        # TODO - if the angle error is low (i.e. pointing at the goal), calculate drag down time with surge velocity
+        # From that, calculate drag down distance
+        # Once position error hits that distance, set thrustFraction to 0
+
+        if math.fabs(error_th) < 2.0*math.pi/180.0 and math.fabs(state[5]) < 0.5*math.pi/180.0:
+            dragDownTime, dragDownDistance = dragDown(self.boat)
+            if error_pos < dragDownDistance:
+                #print "distance = {}, dragDownDistance = {}, DRAG DOWN... u = {}" \
+                #    .format(error_pos, dragDownDistance, self.boat.state[2])
+                return 0.0, 0.0
+
+        error_th_signal = self._headingPID.signal(error_th, self.boat.time)
+        error_pos_signal = self._positionPID.signal(error_pos, self.boat.time)
+
+        self.time = self.boat.time
+
+        clippedAngleError = numpy.clip(math.fabs(error_th), 0.0, self._headingErrorSurgeCutoff)
+        thrustReductionRatio = math.cos(math.pi/2.0*clippedAngleError/self._headingErrorSurgeCutoff)
+        momentFraction = numpy.clip(error_th_signal, -1.0, 1.0)
+        thrustFraction = numpy.clip(error_pos_signal, -thrustReductionRatio, thrustReductionRatio)
 
         return thrustFraction, momentFraction

@@ -23,10 +23,19 @@ def ode(state,t,boat):
     qdot = numpy.zeros((6,))
     qdot[0] = u*math.cos(th) - w*math.sin(th)
     qdot[1] = u*math.sin(th) + w*math.cos(th)
-    qdot[2] = boat.thrustSurge/boat.design.mass - 0.5*rho*au*cu*math.fabs(u)*u
-    qdot[3] = boat.thrustSway/boat.design.mass - 0.5*rho*aw*cw*math.fabs(w)*w
+    qdot[2] = 1.0/boat.design.mass*(boat.thrustSurge - 0.5*rho*au*cu*math.fabs(u)*u)
+    qdot[3] = 1.0/boat.design.mass*(boat.thrustSway - 0.5*rho*aw*cw*math.fabs(w)*w)
     qdot[4] = thdot
-    qdot[5] = boat.moment/boat.design.momentOfInertia - 0.5*rho*ath*cth*math.fabs(thdot)*thdot
+    qdot[5] = 1.0/boat.design.momentOfInertia*(boat.moment - 0.5*rho*ath*cth*math.fabs(thdot)*thdot)
+
+    # linear friction, only dominates when boat is moving slowly
+    if u < 0.25:
+        qdot[2] -= 1.0/boat.design.mass*5.0*u
+    if w < 0.25:
+        qdot[3] -= 1.0/boat.design.mass*5.0*w
+    if thdot < math.pi/20.0:  # ten degrees per second
+        qdot[5] -= 1.0/boat.design.momentOfInertia*5.0*thdot
+
     return qdot
 
 
