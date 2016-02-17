@@ -179,15 +179,17 @@ class Boat(object):
     def design(self, design_in):
         self._design = design_in
 
-    def fullPrint(self):
-        print "Boat {ID}: {T} at X = {X}, Y = {Y}, TH = {TH}".format(ID=self.uniqueID,
+    def __str__(self):
+        return "Boat {ID}: {T} at X = {X}, Y = {Y}, TH = {TH}".format(ID=self.uniqueID,
                                                                      X=self.state[0][0],
                                                                      Y=self.state[1][0],
                                                                      T=self.type,
                                                                      TH=self.state[4][0])
 
     def control(self):
+        self.strategy.updateFinished()
         self.strategy.idealState()
-        self._thrustFraction, self._momentFraction = self.strategy.controller.actuationEffortFractions()
+
+        self._thrustFraction, self._momentFraction = self.strategy.actuationEffortFractions()
         self.thrustSurge, self.thrustSway, self.moment = \
             self.design.thrustAndMomentFromFractions(self._thrustFraction, self._momentFraction)

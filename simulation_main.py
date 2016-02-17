@@ -10,6 +10,7 @@ import Boat
 import Strategies
 
 GLOBAL_DT = 0.05  # [s]
+BOAT_COUNT = 30
 
 figx = 20.0
 figy = 10.0
@@ -105,8 +106,8 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
 
 
 # spawn boats objects
-num_boats = 20
-boat_list = [Boat.Boat() for i in range(0, num_boats)]
+
+boat_list = [Boat.Boat() for i in range(0, BOAT_COUNT)]
 
 # set boat types
 boat_list[0].type = "asset"
@@ -157,30 +158,43 @@ for b in boat_list:
     if b.type == "asset":
         # asset_u0 = 0.1
         # b.state = numpy.array([0.0, 0.0, asset_u0, 0.0, 0.0, 0.0])
-        # b.strategy = Strategies.DestinationOnly(b, [-5, 5], 5.0)
-        b.strategy = Strategies.ChangeHeading(b, numpy.pi/2.0)
+        # b.strategy = Strategies.DestinationOnly(b, [-5, 5], 1.0)
+        # b.strategy = Strategies.ChangeHeading(b, numpy.pi/2.0)
         # b.strategy = Strategies.HoldHeading(b, 1.5, t)
+        b.strategy = Strategies.StrategySequence(b, [
+            Strategies.StrategySequence(b, [
+                Strategies.ChangeHeading(b, math.pi/2.0), Strategies.DestinationOnly(b, [0, 5], 1.0)
+            ]),
+            Strategies.StrategySequence(b, [
+                Strategies.ChangeHeading(b, math.pi), Strategies.DestinationOnly(b, [-5, 5], 1.0)
+            ]),
+            Strategies.StrategySequence(b, [
+                Strategies.ChangeHeading(b, 3.0*math.pi/2.0), Strategies.DestinationOnly(b, [-5, 0], 1.0)
+            ]),
+            Strategies.StrategySequence(b, [
+                Strategies.ChangeHeading(b, 0.0), Strategies.DestinationOnly(b, [0, 0], 1.0)
+            ])
+        ])
+
+        # TODO - try making a standalone strategy out of the the above and call it Square or something
+
+        None
     else:
         # b.strategy = Strategies.PointAtAsset(b)
         # b.strategy = Strategies.HoldHeading(b, 1.5)
-        b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b), Strategies.HoldHeading(b, 2.0)])
-while t < 20:
+        # b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b), Strategies.HoldHeading(b, 2.0)])
+        b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b),
+                            Strategies.DestinationOnly(b, [assets[0].state[0], b.state[1]], 1.0),
+                            Strategies.PointAtAsset(b)])
+        #b.strategy = Strategies.StrategySequence(b, [Strategies.DestinationOnly(b, [5, 5], 2.0),
+        #                                             Strategies.StrategySequence(b, [Strategies.PointAtAsset(b),
+        #                                                                             Strategies.HoldHeading(b, 0.5)])])
+        None
+while t < 30:
     times = numpy.linspace(t, t+dt, 2)
     for b in boat_list:
         b.time = t
         b.control()
-        if b.type == "asset":
-            None
-            # if b.state[2] < 0.01:  #0.05*asset_u0:
-            #     print "time = {}, distance = {}".format(t, b.state[0])
-            #print "asset surge velocity = {}".format(b.state[2])
-            #b.thrustSurge = numpy.random.uniform(0, 50)
-            #b.moment = numpy.random.uniform(-25*0.3556, 25*0.3556)
-        else:
-            None
-            # print "boat {} surge velocity = {}".format(b.uniqueID, b.state[2])
-            #b.thrustSurge = numpy.random.uniform(0, 50)
-            #b.moment = numpy.random.uniform(-25*0.3556, 25*0.3556)
         states = spi.odeint(Boat.ode, b.state, times, (b,))
         b.state = states[1]
     t += dt

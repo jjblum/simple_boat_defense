@@ -58,6 +58,7 @@ class Controller(object):
         self._idealState = []
         self._thrustFraction = 0.0
         self._momentFraction = 0.0
+        self._finished = False
 
     @abc.abstractmethod
     def actuationEffortFractions(self):
@@ -105,6 +106,14 @@ class Controller(object):
     def momentFraction(self, momentFraction_in):
         self._momentFraction = momentFraction_in
 
+    @property
+    def finished(self):
+        return self._finished
+
+    @finished.setter
+    def finished(self, finished_in):
+        self._finished = finished_in
+
 
 class DoNothing(Controller):
     def __init__(self):
@@ -136,9 +145,7 @@ class HeadingOnlyPID(Controller):
         momentFraction = numpy.clip(error_th_signal, -1.0, 1.0)
 
         if math.fabs(error_th) < 1.0*math.pi/180.0 and math.fabs(state[5]) < 0.5*math.pi/180.0:
-            # angle error and angluar speed are both very low, turn off the controller
-            # self.boat.strategy.controller = DoNothing()
-            self.boat.strategy.strategy.finished = True
+            self.finished = True
             return 0.0, 0.0
 
         return 0.0, momentFraction
@@ -202,8 +209,11 @@ class PointAndShootPID(Controller):
         error_y = self.idealState[1] - state[1]
         error_pos = math.sqrt(math.pow(error_x, 2.0) + math.pow(error_y, 2.0))
 
-        # if the position error is less than some threshold, turn thrustFraction to 0
-        if error_pos < self._positionThreshhold:
+        # if the position error is less than some threshold nd velocity is near zero, turn thrustFraction to 0
+        if error_pos < self._positionThreshhold and math.sqrt(math.pow(state[2], 2.0)+math.pow(state[3], 2.0)) < 0.1:
+            # because this is where we might set finished to True, it
+            # needs to be before any other returns that might make it impossible to reach
+            self.finished = True
             return 0.0, 0.0
 
         angleToGoal = math.atan2(error_y, error_x)

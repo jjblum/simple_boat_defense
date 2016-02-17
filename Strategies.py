@@ -8,9 +8,6 @@ import Controllers
 
 # TODO - set up a timed strategy, it executes for a specified amount of time then changes
 
-# TODO - set up a chain of strategies (an executor strategy owns a list of strategies, add a finished variable to each strategy
-#        Each time a strategy finishes, the executor checks the next strategy in the list and starts using that
-
 # TODO - an "executive" or "team" strategy that sets the strategy of more than one individuals
 
 # TODO - LIST OF USEFUL STRATEGIES:
@@ -25,6 +22,10 @@ import Controllers
 #           Will need to provide a chain of points as the path
 #   6) SEQUENCE: [get into ellipse, point away from asset]
 #   7) TIMED SEQUENCE: randomly switch back and forth between moving toward asset and circling around asset
+#   8) Form a line between a spot and the asset (set that spot to the attacker's location)
+#   9) TEAM: divide up teams of defenders evenly between attackers and form a line
+#  10) SEQUENCE: Reach line of attack ASAP, with final orientation along line of attack, then intercept attacker
+#  11) SEQUENCE: [get into ellipse, point away from asset, assign a defender to intercept an attacker]
 
 
 class Strategy(object):
@@ -38,7 +39,7 @@ class Strategy(object):
         self._assets = boat.assets
         self._attackers = boat.attackers
         self._defenders = boat.defenders
-        self._strategy = self  # returns self unless it is a nested strategy or sequence
+        self._strategy = self  # returns self by default (unless it is a nested strategy or sequence)
 
     @abc.abstractmethod
     def idealState(self):
@@ -46,9 +47,11 @@ class Strategy(object):
         # this will be used for fox-rabbit style control
         return
 
+    @property
     def strategy(self):
         return self._strategy
 
+    @strategy.setter
     def strategy(self, strategy_in):
         self._strategy = strategy_in
 
@@ -60,6 +63,9 @@ class Strategy(object):
     def finished(self, finished_in):
         self._finished = finished_in
 
+    def updateFinished(self):
+        self.strategy.finished = self.strategy.controller.finished
+
     @property
     def controller(self):
         return self._controller
@@ -67,6 +73,9 @@ class Strategy(object):
     @controller.setter
     def controller(self, controller_in):
         self._controller = controller_in
+
+    def actuationEffortFractions(self):
+        return self._controller.actuationEffortFractions()
 
     @property
     def time(self):
@@ -118,8 +127,11 @@ class StrategySequence(Strategy):
         super(StrategySequence, self).__init__(boat)
         self._strategySequence = strategySequence_in  # a strategy sequence is a list of 2-tuples, (strategy, finished boolean)
         self._currentStrategy = 0  # index of the current strategy
-        self._strategy = self._strategySequence[0]
+        self._strategy = self._strategySequence[0].strategy
         self.controller = self._strategy.controller
+
+        # TODO - issue with setting self._strategy to the lowest level strategy: now the boat calls its idealState directly!
+        #       This is a huge issue, because i wanted it to call IdealState in a recursive fashion!
 
     @property
     def strategySequence(self):
@@ -129,13 +141,24 @@ class StrategySequence(Strategy):
     def strategySequence(self, strategySequence_in):
         self._strategySequence = strategySequence_in
 
-    @property
-    def strategy(self):
-        return self._strategySequence[self._currentStrategy]
+    # overrie
+    def actuationEffortFractions(self):
+        return self._strategySequence[self._currentStrategy].actuationEffortFractions()
+
+    # override
+    def updateFinished(self):
+        self._strategySequence[self._currentStrategy].updateFinished()
+        if self._strategySequence[self._currentStrategy].finished and \
+                self._currentStrategy < len(self.strategySequence) - 1:
+            self._currentStrategy += 1
+            # must manually update strategy and controller!
+            self._strategy = self._strategySequence[self._currentStrategy]
+            self.controller = self.strategy.controller
+        if self._strategySequence[-1].finished:
+            # sequence is finished when last strategy in a sequence is finished
+            self.finished = True
 
     def idealState(self):
-        if self.strategy.finished and self._currentStrategy < len(self.strategySequence) - 1:
-            self._currentStrategy += 1
         return self._strategySequence[self._currentStrategy].idealState()
 
 
@@ -167,7 +190,7 @@ class StationKeep(Strategy):
 
 class ChangeHeading(Strategy):
     # a strategy that spins in place until the boat has the desired heading
-    def __init__(self, boat, heading):
+    def __init__(self, boat, heading=0.0):
         super(ChangeHeading, self).__init__(boat)
         self._desiredHeading = heading
         self.controller = Controllers.HeadingOnlyPID(boat)
@@ -255,7 +278,7 @@ class PointAtAsset(Strategy):
     # an example of a NESTED STRATEGY
     def __init__(self, boat):
         super(PointAtAsset, self).__init__(boat)
-        self._strategy = ChangeHeading(boat, 0.0)  # the lower level nested strategy
+        self._strategy = ChangeHeading(boat)  # the lower level nested strategy
         self.controller = self._strategy.controller
 
     @property  # need to override the standard controller property with the nested strategy's controller
@@ -265,6 +288,10 @@ class PointAtAsset(Strategy):
     @controller.setter  # need to override the standard controller property with the nested strategy's controller
     def controller(self, controller):
         self._controller = controller
+
+    def updateFinished(self):  # need to override to get the finished status of the nested strategy!!!
+        self.strategy.updateFinished()
+        self.finished = self.strategy.finished
 
     def angleToAsset(self):
         if len(self.assets) == 0:
