@@ -125,13 +125,10 @@ class StrategySequence(Strategy):
 
     def __init__(self, boat, strategySequence_in):
         super(StrategySequence, self).__init__(boat)
-        self._strategySequence = strategySequence_in  # a strategy sequence is a list of 2-tuples, (strategy, finished boolean)
+        self._strategySequence = strategySequence_in
         self._currentStrategy = 0  # index of the current strategy
         self._strategy = self._strategySequence[0].strategy
         self.controller = self._strategy.controller
-
-        # TODO - issue with setting self._strategy to the lowest level strategy: now the boat calls its idealState directly!
-        #       This is a huge issue, because i wanted it to call IdealState in a recursive fashion!
 
     @property
     def strategySequence(self):
@@ -141,7 +138,7 @@ class StrategySequence(Strategy):
     def strategySequence(self, strategySequence_in):
         self._strategySequence = strategySequence_in
 
-    # overrie
+    # override
     def actuationEffortFractions(self):
         return self._strategySequence[self._currentStrategy].actuationEffortFractions()
 
@@ -310,4 +307,82 @@ class PointAtAsset(Strategy):
         return self._strategy.idealState()
 
 
-#class MoveTowardAsset(Strategy):
+class MoveTowardAsset(Strategy):
+    # nested strategy - uses DestinationOnly with the asset as the goal
+    def __init__(self, boat, positionThreshhold):
+        super(MoveTowardAsset, self).__init__(boat)
+        self._strategy = DestinationOnly(boat, [self.assets[0].state[0], self.assets[0].state[1]], positionThreshhold)  # the lower level nested strategy
+        self.controller = self._strategy.controller
+
+    @property  # need to override the standard controller property with the nested strategy's controller
+    def controller(self):
+        return self._strategy.controller
+
+    @controller.setter  # need to override the standard controller property with the nested strategy's controller
+    def controller(self, controller):
+        self._controller = controller
+
+    def updateFinished(self):  # need to override to get the finished status of the nested strategy!!!
+        self.strategy.updateFinished()
+        self.finished = self.strategy.finished
+
+    def idealState(self):
+        self._strategy.destinationState = [self.assets[0].state[0], self.assets[0].state[1]]
+        return self._strategy.idealState()
+
+
+class Square(StrategySequence):
+    # Move around the vertices of a square given its center and edge size.
+    # User can specify which corner and rotation direction they want
+    # This serves as an example of a Strategy built from a sequence of more primitive Strategies and sequences
+    def __init__(self, boat, positionThreshhold, center, edgeSize, firstCorner="bottom_right", direction="cw"):
+        super(StrategySequence, self).__init__(boat)  # run Strategy __init__, NOT StrategySequence.__init__ !!!
+        self._strategySequence = list()
+        self._currentStrategy = 0  # index of the current strategy
+
+        bottom_left = list(numpy.array(center) + numpy.array([-edgeSize/2.0, -edgeSize/2.0]))
+        bottom_right = list(numpy.array(center) + numpy.array([edgeSize/2.0, -edgeSize/2.0]))
+        upper_right = list(numpy.array(center) + numpy.array([edgeSize/2.0, edgeSize/2.0]))
+        upper_left = list(numpy.array(center) + numpy.array([-edgeSize/2.0, edgeSize/2.0]))
+        vertices = list()
+        headings = list()
+        if firstCorner == "bottom_left":
+            if direction == "cw":
+                vertices = [bottom_left, upper_left, upper_right, bottom_right, bottom_left]
+                headings = [math.pi/2.0, 0.0, -math.pi/2.0, math.pi]
+            elif direction == "ccw":
+                vertices = [bottom_left, bottom_right, upper_right, upper_left, bottom_left]
+                headings = [0.0, math.pi/2.0, math.pi, -math.pi/2.0]
+        elif firstCorner == "bottom_right":
+            if direction == "cw":
+                vertices = [bottom_right, bottom_left, upper_left, upper_right, bottom_right]
+                headings = [math.pi, math.pi/2.0, 0.0, -math.pi/2.0]
+            elif direction == "ccw":
+                vertices = [bottom_right, upper_right, upper_left, bottom_left, bottom_right]
+                headings = [math.pi/2.0, math.pi, -math.pi/2.0, 0.0]
+        elif firstCorner == "upper_right":
+            if direction == "cw":
+                vertices = [upper_right, bottom_right, bottom_left, upper_left, upper_right]
+                headings = [-math.pi/2.0, math.pi, math.pi/2.0, 0.0]
+            elif direction == "ccw":
+                vertices = [upper_right, upper_left, bottom_left, bottom_right, upper_right]
+                headings = [math.pi, -math.pi/2.0, 0.0, math.pi/2.0]
+        elif firstCorner == "upper_left":
+            vertices.append(upper_left)
+            if direction == "cw":
+                vertices = [upper_left, upper_right, bottom_right, bottom_left, upper_left]
+                headings = [0.0, -math.pi/2.0, math.pi, math.pi/2.0]
+            elif direction == "ccw":
+                vertices = [upper_left, bottom_left, bottom_right, upper_right, upper_left]
+                headings = [-math.pi/2.0, 0.0, math.pi/2.0, math.pi]
+
+        self._strategySequence = \
+        [
+            DestinationOnly(boat, vertices[0], positionThreshhold),
+            StrategySequence(boat, [ChangeHeading(boat, headings[0]), DestinationOnly(boat, vertices[1], positionThreshhold)]),
+            StrategySequence(boat, [ChangeHeading(boat, headings[1]), DestinationOnly(boat, vertices[2], positionThreshhold)]),
+            StrategySequence(boat, [ChangeHeading(boat, headings[2]), DestinationOnly(boat, vertices[3], positionThreshhold)]),
+            StrategySequence(boat, [ChangeHeading(boat, headings[3]), DestinationOnly(boat, vertices[4], positionThreshhold)])
+        ]
+        self._strategy = self._strategySequence[0].strategy
+        self.controller = self._strategy.controller

@@ -10,7 +10,8 @@ import Boat
 import Strategies
 
 GLOBAL_DT = 0.05  # [s]
-BOAT_COUNT = 30
+TOTAL_TIME = 120  # [s]
+BOAT_COUNT = 10
 
 figx = 20.0
 figy = 10.0
@@ -161,36 +162,21 @@ for b in boat_list:
         # b.strategy = Strategies.DestinationOnly(b, [-5, 5], 1.0)
         # b.strategy = Strategies.ChangeHeading(b, numpy.pi/2.0)
         # b.strategy = Strategies.HoldHeading(b, 1.5, t)
-        b.strategy = Strategies.StrategySequence(b, [
-            Strategies.StrategySequence(b, [
-                Strategies.ChangeHeading(b, math.pi/2.0), Strategies.DestinationOnly(b, [0, 5], 1.0)
-            ]),
-            Strategies.StrategySequence(b, [
-                Strategies.ChangeHeading(b, math.pi), Strategies.DestinationOnly(b, [-5, 5], 1.0)
-            ]),
-            Strategies.StrategySequence(b, [
-                Strategies.ChangeHeading(b, 3.0*math.pi/2.0), Strategies.DestinationOnly(b, [-5, 0], 1.0)
-            ]),
-            Strategies.StrategySequence(b, [
-                Strategies.ChangeHeading(b, 0.0), Strategies.DestinationOnly(b, [0, 0], 1.0)
-            ])
-        ])
-
-        # TODO - try making a standalone strategy out of the the above and call it Square or something
-
+        b.strategy = Strategies.Square(b, 1.0, [0, 0], 20.0, "upper_right", "cw")
         None
     else:
-        # b.strategy = Strategies.PointAtAsset(b)
+        #b.strategy = Strategies.PointAtAsset(b)
+        b.strategy = Strategies.MoveTowardAsset(b, 1.0)
         # b.strategy = Strategies.HoldHeading(b, 1.5)
         # b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b), Strategies.HoldHeading(b, 2.0)])
-        b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b),
-                            Strategies.DestinationOnly(b, [assets[0].state[0], b.state[1]], 1.0),
-                            Strategies.PointAtAsset(b)])
+        #b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b),
+        #                    Strategies.DestinationOnly(b, [assets[0].state[0], b.state[1]], 1.0),
+        #                    Strategies.PointAtAsset(b)])
         #b.strategy = Strategies.StrategySequence(b, [Strategies.DestinationOnly(b, [5, 5], 2.0),
         #                                             Strategies.StrategySequence(b, [Strategies.PointAtAsset(b),
         #                                                                             Strategies.HoldHeading(b, 0.5)])])
         None
-while t < 30:
+while t < TOTAL_TIME:
     times = numpy.linspace(t, t+dt, 2)
     for b in boat_list:
         b.time = t
