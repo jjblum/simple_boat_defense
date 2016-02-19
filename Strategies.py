@@ -121,11 +121,9 @@ class Strategy(object):
 
 
 class StrategySequence(Strategy):
-    __metaclass__ = abc.ABCMeta
-
-    def __init__(self, boat, strategySequence_in):
+    def __init__(self, boat, sequence):
         super(StrategySequence, self).__init__(boat)
-        self._strategySequence = strategySequence_in
+        self._strategySequence = sequence
         self._currentStrategy = 0  # index of the current strategy
         self._strategy = self._strategySequence[0].strategy
         self.controller = self._strategy.controller
@@ -157,6 +155,41 @@ class StrategySequence(Strategy):
 
     def idealState(self):
         return self._strategySequence[self._currentStrategy].idealState()
+
+
+class TimedStrategySequence(StrategySequence):
+    def __init__(self, boat, sequence, timing):
+        super(StrategySequence, self).__init__(boat)
+        self._strategySequence = sequence
+        self._strategyTiming = timing
+        self._currentStrategyStartTime = boat.time
+        self._currentStrategy = 0  # index of the current strategy
+        self._strategy = self._strategySequence[0].strategy
+        self.controller = self._strategy.controller
+
+    # override
+    def updateFinished(self):
+        # notice the OR - the timing represents a timeout
+        self._strategySequence[self._currentStrategy].updateFinished()
+        dt = (self.boat.time - self._currentStrategyStartTime)
+
+        if self._strategySequence[-1].finished or \
+                (self._currentStrategy == len(self.strategySequence) - 1 and
+                 dt >= self._strategyTiming[self._currentStrategy]):
+            # sequence is finished when last strategy in a sequence is finished or total time has run out
+            self._strategySequence[self._currentStrategy] = DoNothing(self.boat)
+            self.finished = True
+
+        if (self._strategySequence[self._currentStrategy].finished or
+                dt >= self._strategyTiming[self._currentStrategy]) and \
+                self._currentStrategy < len(self.strategySequence) - 1:
+
+            self._strategySequence[self._currentStrategy].finished = True
+            self._currentStrategy += 1
+            # must manually update strategy and controller!
+            self._strategy = self._strategySequence[self._currentStrategy]
+            self.controller = self.strategy.controller
+            self._currentStrategyStartTime = self.boat.time
 
 
 class DoNothing(Strategy):

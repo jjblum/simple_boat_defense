@@ -18,6 +18,7 @@ figy = 10.0
 fig = plt.figure(figsize=(figx, figy))
 # ax = fig.add_subplot(111)
 ax = fig.add_axes([0.01, 0.01, 0.95*figy/figx, 0.95])
+ax.elev = 10
 ax.grid(b=False)  # no grid b/c it won't update correctly
 ax.set_xticks([])  # turn off axis labels b/c they wont update correctly
 ax.set_yticks([])  # turn off axis labels b/c they wont update correctly
@@ -47,9 +48,9 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
     mean_y = numpy.mean(assets_y)
     relative_x = numpy.asarray(defenders_x + attackers_x + assets_x) - mean_x
     relative_y = numpy.asarray(defenders_y + attackers_y + assets_y) - mean_y
-    x_max = 1.05*max(abs(relative_x)) + mean_x
-    y_max = 1.05*max(abs(relative_y)) + mean_y
-    square_max = max([x_max, y_max])
+    x_max = 1.05*max(abs(relative_x))
+    y_max = 1.05*max(abs(relative_y))
+    square_max = max(max([x_max, y_max]), 5.0)
 
     axes = [mean_x-square_max, mean_x+square_max, mean_y-square_max, mean_y+square_max]
     plt.plot([mean_x-square_max, mean_x+square_max], [mean_y-square_max, mean_y+square_max],
@@ -163,6 +164,15 @@ for b in boat_list:
         # b.strategy = Strategies.ChangeHeading(b, numpy.pi/2.0)
         # b.strategy = Strategies.HoldHeading(b, 1.5, t)
         b.strategy = Strategies.Square(b, 1.0, [0, 0], 20.0, "upper_right", "cw")
+        #b.strategy = Strategies.TimedStrategySequence(b, [
+        #    Strategies.HoldHeading(b, 2.0),
+        #    Strategies.ChangeHeading(b, math.pi/2),
+        #    Strategies.HoldHeading(b, 2.0),
+        #    Strategies.Square(b, 2.0, [0, 0], 20.0, "upper_right", "cw")
+        #], [2.0, 2.0, 2.0, 20.0])
+
+        # TODO - issue above - the square does not stop after 1 second. Something is not terminating correctly.
+
         None
     else:
         #b.strategy = Strategies.PointAtAsset(b)
