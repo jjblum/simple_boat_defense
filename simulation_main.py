@@ -1,5 +1,4 @@
 import numpy
-import multiprocessing as mp
 import matplotlib.pyplot as plt
 import scipy.integrate as spi
 import pylab
@@ -106,93 +105,96 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
     fig.canvas.blit(ax.bbox)
     # time.sleep(GLOBAL_DT/10)
 
+if __name__ == '__main__':
+    # spawn boats objects
 
-# spawn boats objects
+    boat_list = [Boat.Boat() for i in range(0, BOAT_COUNT)]
 
-boat_list = [Boat.Boat() for i in range(0, BOAT_COUNT)]
+    # set boat types
+    boat_list[0].type = "asset"
+    for b in boat_list[-4:-1]:
+        b.type = "attacker"
 
-# set boat types
-boat_list[0].type = "asset"
-for b in boat_list[-4:-1]:
-    b.type = "attacker"
-
-attackers = [b for b in boat_list if b.type == "attacker"]
-defenders = [b for b in boat_list if b.type == "defender"]
-assets = [b for b in boat_list if b.type == "asset"]
-for b in boat_list:
-    b.boatList = boat_list
-    b.attackers = attackers
-    b.defenders = defenders
-    b.assets = assets
-
-# set initial positions
-# # asset always starts at 0,0
-for b in assets:
-    b.state[0] = 0.0
-    b.state[1] = 0.0
-# # defenders always start at some uniform random polar location, radius between 6 and 14
-for b in defenders:
-    radius = numpy.random.uniform(6.0, 14.0)
-    angle = numpy.random.uniform(0.0, 2*math.pi, 2)
-    x = radius*math.cos(angle[0])
-    y = radius*math.sin(angle[0])
-    b.state[0] = x
-    b.state[1] = y
-    b.state[4] = angle[1]
-# # attackers always start at some uniform random polar location, fixed radius 30
-for b in attackers:
-    radius = 20.0
-    angle = numpy.random.uniform(0.0, 2*math.pi, 2)
-    x = radius*math.cos(angle[0])
-    y = radius*math.sin(angle[0])
-    b.state[0] = x
-    b.state[1] = y
-    b.state[4] = angle[1]
-
-# plotSystem(boat_list, "Initial positions", 0)
-
-# move asset using ODE integration
-real_time_zero = time.time()
-t = 0.0
-dt = GLOBAL_DT
-step = 1
-for b in boat_list:
-    if b.type == "asset":
-        # asset_u0 = 0.1
-        # b.state = numpy.array([0.0, 0.0, asset_u0, 0.0, 0.0, 0.0])
-        # b.strategy = Strategies.DestinationOnly(b, [-5, 5], 1.0)
-        # b.strategy = Strategies.ChangeHeading(b, numpy.pi/2.0)
-        # b.strategy = Strategies.HoldHeading(b, 1.5, t)
-        b.strategy = Strategies.Square(b, 1.0, [0, 0], 20.0, "upper_right", "cw")
-        #b.strategy = Strategies.TimedStrategySequence(b, [
-        #    Strategies.HoldHeading(b, 2.0),
-        #    Strategies.ChangeHeading(b, math.pi/2),
-        #    Strategies.HoldHeading(b, 2.0),
-        #    Strategies.Square(b, 2.0, [0, 0], 20.0, "upper_right", "cw")
-        #], [2.0, 2.0, 2.0, 20.0])
-
-        # TODO - issue above - the square does not stop after 1 second. Something is not terminating correctly.
-
-        None
-    else:
-        #b.strategy = Strategies.PointAtAsset(b)
-        b.strategy = Strategies.MoveTowardAsset(b, 1.0)
-        # b.strategy = Strategies.HoldHeading(b, 1.5)
-        # b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b), Strategies.HoldHeading(b, 2.0)])
-        #b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b),
-        #                    Strategies.DestinationOnly(b, [assets[0].state[0], b.state[1]], 1.0),
-        #                    Strategies.PointAtAsset(b)])
-        #b.strategy = Strategies.StrategySequence(b, [Strategies.DestinationOnly(b, [5, 5], 2.0),
-        #                                             Strategies.StrategySequence(b, [Strategies.PointAtAsset(b),
-        #                                                                             Strategies.HoldHeading(b, 0.5)])])
-        None
-while t < TOTAL_TIME:
-    times = numpy.linspace(t, t+dt, 2)
+    attackers = [b for b in boat_list if b.type == "attacker"]
+    defenders = [b for b in boat_list if b.type == "defender"]
+    assets = [b for b in boat_list if b.type == "asset"]
     for b in boat_list:
-        b.time = t
-        b.control()
-        states = spi.odeint(Boat.ode, b.state, times, (b,))
-        b.state = states[1]
-    t += dt
-    step += 1
-    plotSystem(assets, defenders, attackers, "My extra special run", t)
+        b.boatList = boat_list
+        b.attackers = attackers
+        b.defenders = defenders
+        b.assets = assets
+
+    # set initial positions
+    # # asset always starts at 0,0
+    for b in assets:
+        b.state[0] = 0.0
+        b.state[1] = 0.0
+    # # defenders always start at some uniform random polar location, radius between 6 and 14
+    for b in defenders:
+        radius = numpy.random.uniform(6.0, 14.0)
+        angle = numpy.random.uniform(0.0, 2*math.pi, 2)
+        x = radius*math.cos(angle[0])
+        y = radius*math.sin(angle[0])
+        b.state[0] = x
+        b.state[1] = y
+        b.state[4] = angle[1]
+    # # attackers always start at some uniform random polar location, fixed radius 30
+    for b in attackers:
+        radius = 20.0
+        angle = numpy.random.uniform(0.0, 2*math.pi, 2)
+        x = radius*math.cos(angle[0])
+        y = radius*math.sin(angle[0])
+        b.state[0] = x
+        b.state[1] = y
+        b.state[4] = angle[1]
+
+    # plotSystem(boat_list, "Initial positions", 0)
+
+    # move asset using ODE integration
+    real_time_zero = time.time()
+    t = 0.0
+    dt = GLOBAL_DT
+    step = 1
+    for b in boat_list:
+        if b.type == "asset":
+            # asset_u0 = 0.1
+            # b.state = numpy.array([0.0, 0.0, asset_u0, 0.0, 0.0, 0.0])
+            # b.strategy = Strategies.DestinationOnly(b, [-5, 5], 1.0)
+            # b.strategy = Strategies.ChangeHeading(b, numpy.pi/2.0)
+            # b.strategy = Strategies.HoldHeading(b, 1.5, t)
+            b.strategy = Strategies.Square(b, 1.0, [0, 0], 20.0, "upper_right", "cw")
+            #b.strategy = Strategies.TimedStrategySequence(b, [
+            #    Strategies.HoldHeading(b, 2.0),
+            #    Strategies.ChangeHeading(b, math.pi/2),
+            #    Strategies.HoldHeading(b, 2.0),
+            #    Strategies.Square(b, 2.0, [0, 0], 20.0, "upper_right", "cw")
+            #], [2.0, 2.0, 2.0, 20.0])
+
+            # TODO - issue above - the square does not stop after 1 second. Something is not terminating correctly.
+
+            None
+        else:
+            # b.strategy = Strategies.PointAtAsset(b)
+            # b.strategy = Strategies.PointAwayFromAsset(b)
+            b.strategy = Strategies.PointWithAsset(b)
+            # b.strategy = Strategies.MoveTowardAsset(b, 1.0)
+            # b.strategy = Strategies.HoldHeading(b, 1.5)
+            # b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b), Strategies.HoldHeading(b, 2.0)])
+            #b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b),
+            #                    Strategies.DestinationOnly(b, [assets[0].state[0], b.state[1]], 1.0),
+            #                    Strategies.PointAtAsset(b)])
+            #b.strategy = Strategies.StrategySequence(b, [Strategies.DestinationOnly(b, [5, 5], 2.0),
+            #                                             Strategies.StrategySequence(b, [Strategies.PointAtAsset(b),
+            #                                                                             Strategies.HoldHeading(b, 0.5)])])
+            None
+
+    while t < TOTAL_TIME:
+        times = numpy.linspace(t, t+dt, 2)
+        for b in boat_list:
+            b.time = t
+            b.control()
+            states = spi.odeint(Boat.ode, b.state, times, (b,))
+            b.state = states[1]
+        t += dt
+        step += 1
+        plotSystem(assets, defenders, attackers, "My extra special run", t)

@@ -11,11 +11,12 @@ import Controllers
 # TODO - an "executive" or "team" strategy that sets the strategy of more than one individuals
 
 # TODO - LIST OF USEFUL STRATEGIES:
-#   1a) Move to asset
+#   DONE 1a) Move to asset
 #   1b) Follow trajectory toward asset
-#   1c) Move in a circle around asset (could be the same as perimeter patrol)
-#   2a) Point away from asset
-#   2b) Align heading with asset's heading
+#   1c) Follow trajectory onto line of attack
+#   1d) Move in a circle around asset (could be the same as perimeter patrol)
+#   DONE 2a) Point away from asset
+#   DONE 2b) Align heading with asset's heading
 #   3) Get into an ellipse around asset (extend long axis according to asset speed)
 #   4) Intercept - linear assumption - cast a ray where target may go, find where along that trajectory you can reach
 #   5) Patrol perimeter - ideal boat follows a circuit path at a specified velocity and direction
@@ -340,6 +341,66 @@ class PointAtAsset(Strategy):
         return self._strategy.idealState()
 
 
+class PointAwayFromAsset(Strategy):
+    # a strategy that just points the boat away from the assets
+    def __init__(self, boat):
+        super(PointAwayFromAsset, self).__init__(boat)
+        self._strategy = ChangeHeading(boat)  # the lower level nested strategy
+        self.controller = self._strategy.controller
+
+    @property  # need to override the standard controller property with the nested strategy's controller
+    def controller(self):
+        return self._strategy.controller
+
+    @controller.setter  # need to override the standard controller property with the nested strategy's controller
+    def controller(self, controller):
+        self._controller = controller
+
+    def updateFinished(self):  # need to override to get the finished status of the nested strategy!!!
+        self.strategy.updateFinished()
+        self.finished = self.strategy.finished
+
+    def angleToAsset(self):
+        if len(self.assets) == 0:
+            # no asset to point at, do not change heading
+            return self.boat.state[4]
+        x = self.boat.state[0]
+        y = self.boat.state[1]
+        assets_x = [b.state[0] for b in self.assets]
+        assets_y = [b.state[1] for b in self.assets]
+        asset_x = numpy.mean(assets_x)
+        asset_y = numpy.mean(assets_y)
+        return math.atan2(asset_y - y, asset_x - x) + math.pi
+
+    def idealState(self):
+        self._strategy.desiredHeading = self.angleToAsset()
+        return self._strategy.idealState()
+
+
+class PointWithAsset(Strategy):
+    # a strategy that just points the boat in the same direction at the asset is pointing
+    def __init__(self, boat):
+        super(PointWithAsset, self).__init__(boat)
+        self._strategy = ChangeHeading(boat)  # the lower level nested strategy
+        self.controller = self._strategy.controller
+
+    @property  # need to override the standard controller property with the nested strategy's controller
+    def controller(self):
+        return self._strategy.controller
+
+    @controller.setter  # need to override the standard controller property with the nested strategy's controller
+    def controller(self, controller):
+        self._controller = controller
+
+    def updateFinished(self):  # need to override to get the finished status of the nested strategy!!!
+        self.strategy.updateFinished()
+        self.finished = self.strategy.finished
+
+    def idealState(self):
+        self._strategy.desiredHeading = self.assets[0].state[4]
+        return self._strategy.idealState()
+
+
 class MoveTowardAsset(Strategy):
     # nested strategy - uses DestinationOnly with the asset as the goal
     def __init__(self, boat, positionThreshhold):
@@ -419,3 +480,19 @@ class Square(StrategySequence):
         ]
         self._strategy = self._strategySequence[0].strategy
         self.controller = self._strategy.controller
+
+
+class Circle(Strategy):
+    def __init__(self, boat, center, radius, direction="cw"):
+        super(Circle, self).__init__(boat)
+        self.controller
+
+
+"""
+class DefensiveLine(Strategy):
+    def __init__(self, boat, team, lineCenter, lineHeading, gapBetweenDefenders=5.0):
+        super(DefensiveLine, self).__init__(boat)
+        self._team = team
+
+    def angleOfLine
+"""
