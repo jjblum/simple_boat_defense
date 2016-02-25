@@ -7,7 +7,7 @@ def wrapToPi(angle):
     return (angle + np.pi) % (2 * np.pi) - np.pi
 
 
-def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, eta=[1, 1, 0, 0, 750, 750]):
+def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, eta=[5, 5, 0, 0, 750, 750]):
     """
     :param x0: x coordinate, starting point
     :param y0: y coordinate, starting point
@@ -76,6 +76,7 @@ def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, 
         b5*np.power(u, 5) + b6*np.power(u, 6) + b7*np.power(u, 7)
     dx = np.r_[0.0, np.diff(sx)]
     dy = np.r_[0.0, np.diff(sy)]
+    length = np.sum(np.sqrt(np.power(dx, 2) + np.power(dy, 2)))
     sth = np.arctan2(dy, dx)/m.pi  # multiples of pi
     # need to find singularity jumps and patch them
     dth = np.r_[0.0, np.diff(sth)]
@@ -83,7 +84,7 @@ def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, 
     singularities = np.where(np.abs(np.abs(dth) - 0.5) < m.pow(10., -4))
     # erroneous sth jumps from pi/2 or -pi/2 to 0, so correct sth should be approx. equal to erroneous dth
     sth[singularities] = dth[singularities]
-    return sx, sy, sth  #, dth
+    return sx, sy, sth, length
 
 if __name__ == '__main__':
     # a simple test
@@ -95,19 +96,21 @@ if __name__ == '__main__':
     my_sx = np.empty((spline_count*my_N,))
     my_sy = np.empty((spline_count*my_N,))
     my_sth = np.empty((spline_count*my_N,))
+    my_length = 0.0
     # my_dth = np.empty((spline_count*my_N,))
     l = np.linspace(0.0, 1.0, spline_count*my_N)
     for j in range(spline_count - 1):
-        sx_, sy_, sth_ = piazziSpline(x[j], y[j], th[j], x[j+1], y[j+1], th[j+1], N=my_N)
+        sx_, sy_, sth_, length_ = piazziSpline(x[j], y[j], th[j], x[j+1], y[j+1], th[j+1], N=my_N)
         my_sx[j*my_N:(j+1)*my_N] = sx_
         my_sy[j*my_N:(j+1)*my_N] = sy_
         my_sth[j*my_N:(j+1)*my_N] = sth_
+        my_length += length_
         # my_dth[j*my_N:(j+1)*my_N] = dth_
 
     plt.subplot(1, 2, 1)
     plt.plot(my_sx, my_sy)
     plt.axis('equal')
-    plt.title("boat path")
+    plt.title("boat path, total length = {}".format(my_length))
     plt.subplot(1, 2, 2)
     plt.plot(l, my_sth)
     plt.plot(np.arange(0., 1., 1./spline_count), my_sth[np.arange(0, spline_count*my_N, my_N)],

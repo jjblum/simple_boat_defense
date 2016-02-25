@@ -8,7 +8,7 @@ import copy
 def wrapToPi(angle):
     return (angle + numpy.pi) % (2 * numpy.pi) - numpy.pi
 
-
+"""
 class ConstantFunction(object):
     # class with a single method that returns a specified constant
     def __init__(self, constant_in):
@@ -16,7 +16,7 @@ class ConstantFunction(object):
 
     def f(self):
         return self._constant
-
+"""
 
 def dragDown(boat):
     # http://physics.stackexchange.com/questions/72503/how-do-i-calculate-the-distance-a-ship-will-take-to-stop
@@ -200,14 +200,22 @@ class SurgeAndHeadingPID(Controller):
 
 class PointAndShootPID(Controller):
 
-    def __init__(self, boat, positionThreshold):
+    def __init__(self, boat, positionThreshold_in, driftDown=True):
         super(PointAndShootPID, self).__init__()
         self._boat = boat
         self.time = boat.time
-        self._positionThreshhold = positionThreshold
+        self._positionThreshold = positionThreshold_in
         self._headingPID = UniversalPID(boat, 1.0, 0.0, 1.0, boat.time, "heading_PID")
         self._positionPID = UniversalPID(boat, 0.5, 0.01, 10.0, boat.time, "position_PID")
+        #self._surgeVelocityPID = UniversalPID(boat, 1.0, 0.01, 10.0, boat.time, "surgeVelocity_PID")
         self._headingErrorSurgeCutoff = 90.0*math.pi/180.0  # thrust signal rolls off as a cosine, hitting zero here
+        self._driftDown = driftDown
+
+    def positionThreshold(self):
+        return self._positionThreshold
+
+    def positionThreshold(self, positionThreshold_in):
+        self._positionThreshold = positionThreshold_in
 
     def actuationEffortFractions(self):
         thrustFraction = 0.0
@@ -216,10 +224,12 @@ class PointAndShootPID(Controller):
 
         error_x = self.idealState[0] - state[0]
         error_y = self.idealState[1] - state[1]
+        #error_u = self.idealState[2] - state[2]
+        #print "surge error = {}".format(error_u)
         error_pos = math.sqrt(math.pow(error_x, 2.0) + math.pow(error_y, 2.0))
 
         # if the position error is less than some threshold nd velocity is near zero, turn thrustFraction to 0
-        if error_pos < self._positionThreshhold and math.sqrt(math.pow(state[2], 2.0)+math.pow(state[3], 2.0)) < 0.1:
+        if error_pos < self._positionThreshold and math.sqrt(math.pow(state[2], 2.0)+math.pow(state[3], 2.0)) < 0.1:
             # because this is where we might set finished to True, it
             # needs to be before any other returns that might make it impossible to reach
             self.finished = True
@@ -228,19 +238,20 @@ class PointAndShootPID(Controller):
         angleToGoal = math.atan2(error_y, error_x)
         error_th = wrapToPi(state[4] - angleToGoal)  # error between heading and heading to idealStates
 
-        # TODO - if the angle error is low (i.e. pointing at the goal), calculate drag down time with surge velocity
+        # if the angle error is low (i.e. pointing at the goal), calculate drag down time with surge velocity
         # From that, calculate drag down distance
         # Once position error hits that distance, set thrustFraction to 0
-
-        if math.fabs(error_th) < 2.0*math.pi/180.0 and math.fabs(state[5]) < 0.5*math.pi/180.0:
-            dragDownTime, dragDownDistance = dragDown(self.boat)
-            if error_pos < dragDownDistance:
-                #print "distance = {}, dragDownDistance = {}, DRAG DOWN... u = {}" \
-                #    .format(error_pos, dragDownDistance, self.boat.state[2])
-                return 0.0, 0.0
+        if self._driftDown:
+            if math.fabs(error_th) < 2.0*math.pi/180.0 and math.fabs(state[5]) < 0.5*math.pi/180.0:
+                dragDownTime, dragDownDistance = dragDown(self.boat)
+                if error_pos < dragDownDistance:
+                    #print "distance = {}, dragDownDistance = {}, DRAG DOWN... u = {}" \
+                    #    .format(error_pos, dragDownDistance, self.boat.state[2])
+                    return 0.0, 0.0
 
         error_th_signal = self._headingPID.signal(error_th, self.boat.time)
         error_pos_signal = self._positionPID.signal(error_pos, self.boat.time)
+        #error_surge_signal = self._surgeVelocityPID.signal(error_u, self.boat.time)
 
         self.time = self.boat.time
 
@@ -251,7 +262,7 @@ class PointAndShootPID(Controller):
 
         return thrustFraction, momentFraction
 
-
+"""
 class AicardiPathFollower(Controller):
     # Aicardi et. al. 2001 "A planar path following controller for underactuated marine vehicles"
     # Path follower that does not need knowledge of path curvature
@@ -259,23 +270,36 @@ class AicardiPathFollower(Controller):
     #    though that has not been implemented here
     # "thrustFunction" is a user specified function that controls thrust
     # Default value is a constant 1.0
-    def __init__(self, boat, alphaGain=1.0, eGain=0.5, ebar=1.0, thrustFunction=ConstantFunction(1.0).f):
+    def __init__(self, boat, alphaGain=1.0, eGain=1.0, ebar=1.0, thrustConstant = 1.0):
         super(AicardiPathFollower, self).__init__()
         self._boat = boat
         self.time = boat.time
-        self._thrustFunction = thrustFunction
+        self._thrustConstant = thrustConstant
         self._alpha = 0.0
         self._e = 0.0
         self._ebar = ebar
         self._theta = 0.0  # note that this theta is different from boat heading!!!
-        self._eGain = 0.0
-        self._alphaGain = 0.0
+        self._eGain = eGain
+        self._alphaGain = alphaGain
 
     def actuationEffortFractions(self):
         self.time = self.boat.time  # update time
         self.update()
-        thrustFraction = 0.0
-        momentFraction = 0.0
+
+        f = self._thrustConstant
+
+        thrustFraction = f*math.cos(self._theta)
+        if self._e != 0:
+            momentFraction = self._alphaGain*self._alpha + 1./self._e*(
+                f*math.cos(self._theta)*math.sin(self._alpha) -
+                self.boat.state[3]*math.cos(self._alpha) -
+                math.sin(self._alpha)*(
+                    f*math.cos(self._alpha) - self._eGain*(self._e - self._ebar)*math.cos(self._theta)
+                )
+            )
+        else:
+            momentFraction = 0.0
+
         return thrustFraction, momentFraction
 
     def update(self):
@@ -288,3 +312,4 @@ class AicardiPathFollower(Controller):
         e_th = math.atan2(dy, dx)
         self._theta = e_th - idealState[4]  # difference between angle of error vector and target heading
         self._alpha = e_th - state[4]  # difference between angle of error and body heading
+"""

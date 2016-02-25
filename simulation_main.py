@@ -10,7 +10,7 @@ import Strategies
 
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
-BOAT_COUNT = 10
+BOAT_COUNT = 5
 
 figx = 20.0
 figy = 10.0
@@ -71,6 +71,10 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
                     0.05*math.sin(assets_th[j]),
                     fc="b", ec="b", head_width=0.5, head_length=1.0) for j in range(len(assets_x))]
 
+    for boat in defenders:
+        if boat.plotData is not None:
+            ax.draw_artist(ax.plot(boat.plotData[:, 0], boat.plotData[:, 1], 'k-', linewidth=3.0)[0])
+
     # plt.title(title_string + " time = {tt} s".format(tt=plot_time))
     # rectangle coords
     left, width = 0.01, 0.95
@@ -90,8 +94,8 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
     real_time_passed = time.time() - real_time_zero
     time_ratio = assets[0].time/real_time_passed
     time_ratio_text = ax.text(right, top - 0.03, "speed = {:.2f}x".format(time_ratio),
-                        horizontalalignment='right', verticalalignment='bottom',
-                        transform=ax.transAxes, size=20)
+                              horizontalalignment='right', verticalalignment='bottom',
+                              transform=ax.transAxes, size=20)
     ax.draw_artist(title_text)
     ax.draw_artist(asset_position_text)
     ax.draw_artist(time_text)
@@ -161,22 +165,35 @@ if __name__ == '__main__':
             # b.state = numpy.array([0.0, 0.0, asset_u0, 0.0, 0.0, 0.0])
             # b.strategy = Strategies.DestinationOnly(b, [-5, 5], 1.0)
             # b.strategy = Strategies.ChangeHeading(b, numpy.pi/2.0)
-            # b.strategy = Strategies.HoldHeading(b, 1.5, t)
-            b.strategy = Strategies.Square(b, 1.0, [0, 0], 20.0, "upper_right", "cw")
-            #b.strategy = Strategies.TimedStrategySequence(b, [
+            # b.strategy = Strategies.HoldHeading(b, 1.5)
+            # b.strategy = Strategies.SingleSpline(b, [10, 10], 0.0, 1.0, 1.0)
+            # b.strategy = Strategies.Square(b, 1.0, [0, 0], 20.0, "upper_right", "cw")
+            # b.strategy = Strategies.Circle(b, [0.0, 0.0], 10.0)
+            # b.strategy = Strategies.TimedStrategySequence(b, [
             #    Strategies.HoldHeading(b, 2.0),
             #    Strategies.ChangeHeading(b, math.pi/2),
             #    Strategies.HoldHeading(b, 2.0),
             #    Strategies.Square(b, 2.0, [0, 0], 20.0, "upper_right", "cw")
             #], [2.0, 2.0, 2.0, 20.0])
-
-            # TODO - issue above - the square does not stop after 1 second. Something is not terminating correctly.
+            b.strategy = Strategies.StrategySequence(b, [
+                (Strategies.ChangeHeading, (b, math.pi/2.0)),
+                (Strategies.HoldHeading, (b, 2.0))
+            ])
 
             None
+        elif b.type == "defender":
+            # b.strategy = Strategies.SingleSpline(b, [assets[0].state[0], assets[0].state[1] + 10], math.pi/2.0, positionThreshold=2.0)
+            #b.strategy = Strategies.StrategySequence(b, [
+            #    Strategies.DestinationOnlyExecutor(b, [assets[0].state[0], assets[0].state[1] + 10 - 5], positionThreshold=2.0),
+            #    Strategies.DestinationOnlyExecutor(b, [assets[0].state[0], assets[0].state[1] + 10], positionThreshold=2.0)
+            #])
+            #b.strategy = Strategies.DestinationOnlyExecutor(b, [assets[0].state[0], assets[0].state[1] + 10], positionThreshold=1.0)
+            None
         else:
+            #b.strategy = Strategies.SingleSpline(b, [assets[0].state[0], assets[0].state[1] + 10], math.pi/2.0, positionThreshold=2.0)
             # b.strategy = Strategies.PointAtAsset(b)
             # b.strategy = Strategies.PointAwayFromAsset(b)
-            b.strategy = Strategies.PointWithAsset(b)
+            # b.strategy = Strategies.PointWithAsset(b)
             # b.strategy = Strategies.MoveTowardAsset(b, 1.0)
             # b.strategy = Strategies.HoldHeading(b, 1.5)
             # b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b), Strategies.HoldHeading(b, 2.0)])
@@ -195,6 +212,8 @@ if __name__ == '__main__':
             b.control()
             states = spi.odeint(Boat.ode, b.state, times, (b,))
             b.state = states[1]
+            #if b.type == "asset":
+                #print b.state[0], b.state[1], b.state[4]
         t += dt
         step += 1
-        plotSystem(assets, defenders, attackers, "My extra special run", t)
+        plotSystem(assets, defenders, attackers, "ATTAAAAAACK!!!!", t)

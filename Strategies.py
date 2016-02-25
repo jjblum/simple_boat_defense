@@ -2,6 +2,7 @@ import abc  # abstract base classes
 import math
 import numpy
 import Controllers
+import PiazziSpline
 
 # TODO - updating the strategy effectively deletes all the asset, attacker, defender, etc. information that the last strategy held
 #        is there a way to have that information transferred from stategy to strategy?
@@ -76,7 +77,7 @@ class Strategy(object):
         self._controller = controller_in
 
     def actuationEffortFractions(self):
-        return self._controller.actuationEffortFractions()
+        return self.controller.actuationEffortFractions()
 
     @property
     def time(self):
@@ -156,6 +157,42 @@ class StrategySequence(Strategy):
 
     def idealState(self):
         return self._strategySequence[self._currentStrategy].idealState()
+
+
+# TODO - ISSUE: Sequence instantiates all strategies in it when itself is instantiated. This ruins executors that run pickStrategy only once
+# TODO -        Isn't there a way to not instantiate something until later? Maybe the sequence could just be classes rather than real objects? idk
+# Yeah....what if you pass a tuple instead of the strategy directly: (Strategy class,(args))
+# Then, when you switch to the next strategy, you instantiate it at that moment?
+class Executor(Strategy):
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, boat):
+        super(Executor, self).__init__(boat)
+        self._readyToPickStrategy = True  # we dont want to pick a strategy every single iteration
+
+    @abc.abstractmethod
+    def pickStrategy(self):
+        # virtual method that determines the current strategy based on system state
+        return
+
+    @property  # need to override the standard controller property with the nested strategy's controller
+    def controller(self):
+        return self._strategy.controller
+
+    @controller.setter  # need to override the standard controller property with the nested strategy's controller
+    def controller(self, controller):
+        self._controller = controller
+
+    def updateFinished(self):  # need to override to get the finished status of the nested strategy!!!
+        if self.strategy == self:  # a strategy hasn't been assigned yet
+            return
+        self.strategy.updateFinished()
+        self.finished = self.strategy.finished
+
+    def idealState(self):
+        if self._readyToPickStrategy:
+            self.pickStrategy()
+        return self._strategy.idealState()
 
 
 class TimedStrategySequence(StrategySequence):
@@ -271,11 +308,11 @@ class HoldHeading(Strategy):
 
 class DestinationOnly(Strategy):
     # a strategy that only returns the final destination location
-    def __init__(self, boat, destination, positionThreshhold):
+    def __init__(self, boat, destination, positionThreshold, driftDown=True):
         super(DestinationOnly, self).__init__(boat)
-        self._destinationState = None
-        self.destinationState = destination
-        self.controller = Controllers.PointAndShootPID(boat, positionThreshhold)
+        self._destinationState = destination
+        self.controller = Controllers.PointAndShootPID(boat, positionThreshold, driftDown)
+        self._driftDown = driftDown
 
     @property
     def destinationState(self):
@@ -300,6 +337,7 @@ class DestinationOnly(Strategy):
             self._destinationState = state
 
     def idealState(self):
+        self.boat.plotData = numpy.atleast_2d(numpy.array([[self.boat.state[0],self.boat.state[1]], self._destinationState]))
         self.controller.idealState = self.destinationState  # update this here so the controller doesn't need to import Strategies
         return self.destinationState
 
@@ -403,9 +441,9 @@ class PointWithAsset(Strategy):
 
 class MoveTowardAsset(Strategy):
     # nested strategy - uses DestinationOnly with the asset as the goal
-    def __init__(self, boat, positionThreshhold):
+    def __init__(self, boat, positionThreshold):
         super(MoveTowardAsset, self).__init__(boat)
-        self._strategy = DestinationOnly(boat, [self.assets[0].state[0], self.assets[0].state[1]], positionThreshhold)  # the lower level nested strategy
+        self._strategy = DestinationOnly(boat, [self.assets[0].state[0], self.assets[0].state[1]], positionThreshold)  # the lower level nested strategy
         self.controller = self._strategy.controller
 
     @property  # need to override the standard controller property with the nested strategy's controller
@@ -429,7 +467,7 @@ class Square(StrategySequence):
     # Move around the vertices of a square given its center and edge size.
     # User can specify which corner and rotation direction they want
     # This serves as an example of a Strategy built from a sequence of more primitive Strategies and sequences
-    def __init__(self, boat, positionThreshhold, center, edgeSize, firstCorner="bottom_right", direction="cw"):
+    def __init__(self, boat, positionThreshold, center, edgeSize, firstCorner="bottom_right", direction="cw"):
         super(StrategySequence, self).__init__(boat)  # run Strategy __init__, NOT StrategySequence.__init__ !!!
         self._strategySequence = list()
         self._currentStrategy = 0  # index of the current strategy
@@ -472,20 +510,113 @@ class Square(StrategySequence):
 
         self._strategySequence = \
         [
-            DestinationOnly(boat, vertices[0], positionThreshhold),
-            StrategySequence(boat, [ChangeHeading(boat, headings[0]), DestinationOnly(boat, vertices[1], positionThreshhold)]),
-            StrategySequence(boat, [ChangeHeading(boat, headings[1]), DestinationOnly(boat, vertices[2], positionThreshhold)]),
-            StrategySequence(boat, [ChangeHeading(boat, headings[2]), DestinationOnly(boat, vertices[3], positionThreshhold)]),
-            StrategySequence(boat, [ChangeHeading(boat, headings[3]), DestinationOnly(boat, vertices[4], positionThreshhold)])
+            DestinationOnly(boat, vertices[0], positionThreshold),
+            StrategySequence(boat, [ChangeHeading(boat, headings[0]), DestinationOnly(boat, vertices[1], positionThreshold)]),
+            StrategySequence(boat, [ChangeHeading(boat, headings[1]), DestinationOnly(boat, vertices[2], positionThreshold)]),
+            StrategySequence(boat, [ChangeHeading(boat, headings[2]), DestinationOnly(boat, vertices[3], positionThreshold)]),
+            StrategySequence(boat, [ChangeHeading(boat, headings[3]), DestinationOnly(boat, vertices[4], positionThreshold)])
         ]
         self._strategy = self._strategySequence[0].strategy
         self.controller = self._strategy.controller
 
 
+class SingleSpline(Strategy):
+    # follow a single Piazzi spline to destination
+    def __init__(self, boat, destination, finalHeading=0.0, surgeVelocity=1.0, positionThreshold=1.0):
+        super(SingleSpline, self).__init__(boat)
+        self._destination = destination
+        self._surgeVelocity = surgeVelocity
+        self._finalHeading = finalHeading
+        self._N = 100  # points along the spline
+        self._progress = None
+        self._sx = None
+        self._sy = None
+        self._sth = None
+        self._length = None
+        self._t0 = boat.time
+        self.generateSpline()
+        self._positionThreshold = positionThreshold
+        self.controller = Controllers.PointAndShootPID(boat, 0.0)
+        #self.controller = Controllers.AicardiPathFollower(boat, thrustConstant=surgeVelocity)
+
+    def generateSpline(self):
+        x0 = self.boat.state[0]
+        x1 = self._destination[0]
+        y0 = self.boat.state[1]
+        y1 = self._destination[1]
+        th0 = self.boat.state[4]
+        th1 = self._finalHeading
+        self._sx, self._sy, self._sth, self._length = PiazziSpline.piazziSpline(x0, y0, th0, x1, y1, th1)
+        self._progress = numpy.linspace(0.0, self._length, self._N)  # fraction of progress along the line
+        # print numpy.c_[self._progress, self._sx, self._sy, self._sth]
+
+    def idealState(self):
+        # linear interpolation to find position along spline length?
+        totalTime = self.boat.time - self._t0 + 1.0
+        lengthTraveled = self._surgeVelocity*totalTime
+        if lengthTraveled > 0.5*self._length:
+            self.controller.positionThreshold = self._positionThreshold
+        state = numpy.zeros((6,))
+        state[0] = numpy.interp(lengthTraveled, self._progress, self._sx)
+        state[1] = numpy.interp(lengthTraveled, self._progress, self._sy)
+        state[2] = self._surgeVelocity
+        state[3] = 0.0
+        state[4] = numpy.interp(lengthTraveled, self._progress, self._sth)
+        # state[5] = ? leave as zero for now
+        self.controller.idealState = state
+
+
+"""
+class Weave(Strategy):
+    # Ideal state weaves in a sine wave
+    def __init__(self, boat, weaveHalfWidth=10.0, weavePeriod=10.0):
+        super(Weave, self).__init__(boat)
+        self._th0 = boat.state[4]
+        def mySine(t):
+"""
+
+
 class Circle(Strategy):
-    def __init__(self, boat, center, radius, direction="cw"):
+    """
+        Ideal state travels along the perimeter of a circle at a fixed speed
+        startingAngle: the location along the circle (in global frame) where the ideal state begins
+        speed --> s = R*theta --> sdot = speed = R*theta_dot
+        theta_dot = speed/R
+        A PID will eventually merge with the circle, but it will take some time
+    """
+    def __init__(self, boat, center, radius, direction="cw", startingAngle=0.0, speed=2.0):
         super(Circle, self).__init__(boat)
-        self.controller
+        self._startingAngle = startingAngle
+        self._speed = speed
+        self._direction = direction
+        self._R = radius
+        self._center = center
+        self.time = boat.time
+        self._t0 = boat.time
+        if self._direction == "cw":
+            self._th0 = self._startingAngle - math.pi/2.0
+            self._thetaDot = -speed/radius
+        else:  # self._direction == "ccw":
+            self._th0 = self._startingAngle + math.pi/2.0
+            self._thetaDot = speed/radius
+        #self.controller = Controllers.AicardiPathFollower(boat)
+        self.controller = Controllers.PointAndShootPID(boat, 1.0)
+
+    def idealState(self):
+        self.time = self.boat.time
+        totalTime = self.time - self._t0
+        if self._direction == "cw":
+            th = Controllers.wrapToPi(self._th0 - totalTime*self._thetaDot)
+        else:
+            th = Controllers.wrapToPi(self._th0 + totalTime*self._thetaDot)
+        x = self._center[0] + self._R*math.cos(self._startingAngle + totalTime*self._thetaDot)
+        y = self._center[1] + self._R*math.sin(self._startingAngle + totalTime*self._thetaDot)
+        u = self._speed
+        w = 0.0
+        thdot = self._thetaDot
+        self.controller.idealState = numpy.array([x, y, u, w, th, thdot])
+
+
 
 
 """
@@ -496,3 +627,27 @@ class DefensiveLine(Strategy):
 
     def angleOfLine
 """
+
+
+class DestinationOnlyExecutor(Executor):
+    def __init__(self, boat, destination, positionThreshold):
+        super(DestinationOnlyExecutor, self).__init__(boat)
+        self._destination = destination
+        self._positionThreshold = positionThreshold
+        self.pickStrategy()
+
+    def pickStrategy(self):
+        # if boat is within 10 meters, do point THEN shoot strategy sequence
+        # if boat is not, do point AND shoot
+        state = self.boat.state
+        dx = self._destination[0] - state[0]
+        dy = self._destination[1] - state[1]
+        distance = math.sqrt(math.pow(dx, 2) + math.pow(dy, 2))
+        if distance < 10.0:
+            self._strategy = StrategySequence(self.boat, [
+                ChangeHeading(self.boat, math.atan2(dy, dx)),
+                DestinationOnly(self.boat, self._destination, self._positionThreshold)
+            ])
+        else:
+            self._strategy = DestinationOnly(self.boat, self._destination, self._positionThreshold)
+        self._readyToPickStrategy = False  # only make this decision once!

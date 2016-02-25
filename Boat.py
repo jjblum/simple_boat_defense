@@ -61,6 +61,7 @@ class Boat(object):
         self._boatList = []
         self._strategy = Strategies.DoNothing(self)
         self._design = Designs.TankDriveDesign()
+        self._plotData = None  # [x, y] data used to display current actions
         Boat.idCount += 1
 
     @property
@@ -178,6 +179,14 @@ class Boat(object):
     @design.setter
     def design(self, design_in):
         self._design = design_in
+
+    @property
+    def plotData(self):
+        return self._plotData
+
+    @plotData.setter
+    def plotData(self, plotData_in):
+        self._plotData = plotData_in
 
     def __str__(self):
         return "Boat {ID}: {T} at X = {X}, Y = {Y}, TH = {TH}".format(ID=self.uniqueID,
