@@ -37,11 +37,12 @@ class Strategy(object):
         self._boat = boat
         self._controller = None
         self._finished = False  # setting this to True does not necessarily mean a strategy will terminate
-        self._t = 0.0
+        self._t = boat.time
         self._assets = boat.assets
         self._attackers = boat.attackers
         self._defenders = boat.defenders
         self._strategy = self  # returns self by default (unless it is a nested strategy or sequence)
+        self._strategies = list()  # not relevant for basic strategies
 
     @abc.abstractmethod
     def idealState(self):
@@ -123,12 +124,28 @@ class Strategy(object):
 
 
 class StrategySequence(Strategy):
+    """
+        strategySequence: list of (class, (inputs)) stategies to be instantiated
+        strategy: drills down to the lowest level current strategy
+        strategies: a list of instantiated strategies
+
+        We delay the instantiation in order to provide the most up to date system state for the later strategies.
+        This is important for Executors that must make strategy choices based on system state.
+        Previously, when there was just a simple list of strategies, this would instantiate all of them at once.
+    """
     def __init__(self, boat, sequence):
         super(StrategySequence, self).__init__(boat)
         self._strategySequence = sequence
         self._currentStrategy = 0  # index of the current strategy
-        self._strategy = self._strategySequence[0].strategy
-        self.controller = self._strategy.controller
+        self._strategies = list()
+        self.start(self._currentStrategy)
+
+    def start(self, currentStrategyIndex):
+        # instantiate a strategy from the uninstantiated sequence
+        self._strategies.append(self._strategySequence[self._currentStrategy][0](
+                    *self._strategySequence[self._currentStrategy][1]))
+        self._strategy = self._strategies[-1]
+        self.controller = self.strategy.controller
 
     @property
     def strategySequence(self):
@@ -140,23 +157,25 @@ class StrategySequence(Strategy):
 
     # override
     def actuationEffortFractions(self):
-        return self._strategySequence[self._currentStrategy].actuationEffortFractions()
+        return self._strategies[-1].actuationEffortFractions()
 
     # override
     def updateFinished(self):
-        self._strategySequence[self._currentStrategy].updateFinished()
-        if self._strategySequence[self._currentStrategy].finished and \
+        self._strategies[-1].updateFinished()
+        if self._strategies[-1].finished and \
                 self._currentStrategy < len(self.strategySequence) - 1:
             self._currentStrategy += 1
             # must manually update strategy and controller!
-            self._strategy = self._strategySequence[self._currentStrategy]
+            self._strategies.append(self._strategySequence[self._currentStrategy][0](
+                    *self._strategySequence[self._currentStrategy][1]))
+            self._strategy = self._strategies[-1]
             self.controller = self.strategy.controller
-        if self._strategySequence[-1].finished:
+        if self._strategies[-1].finished:
             # sequence is finished when last strategy in a sequence is finished
             self.finished = True
 
     def idealState(self):
-        return self._strategySequence[self._currentStrategy].idealState()
+        return self._strategies[-1].idealState()
 
 
 # TODO - ISSUE: Sequence instantiates all strategies in it when itself is instantiated. This ruins executors that run pickStrategy only once
@@ -201,32 +220,31 @@ class TimedStrategySequence(StrategySequence):
         self._strategySequence = sequence
         self._strategyTiming = timing
         self._currentStrategyStartTime = boat.time
-        self._currentStrategy = 0  # index of the current strategy
-        self._strategy = self._strategySequence[0].strategy
-        self.controller = self._strategy.controller
+        self._currentStrategy = 0
+        self.start(self._currentStrategy)
 
     # override
     def updateFinished(self):
         # notice the OR - the timing represents a timeout
-        self._strategySequence[self._currentStrategy].updateFinished()
+        self._strategies[-1].updateFinished()
         dt = (self.boat.time - self._currentStrategyStartTime)
 
-        if self._strategySequence[-1].finished or \
+        if self._strategies[-1].finished or \
                 (self._currentStrategy == len(self.strategySequence) - 1 and
                  dt >= self._strategyTiming[self._currentStrategy]):
             # sequence is finished when last strategy in a sequence is finished or total time has run out
-            self._strategySequence[self._currentStrategy] = DoNothing(self.boat)
+            self._strategies.append(DoNothing(self.boat))
+            self._strategy = self._strategies[-1]
             self.finished = True
 
-        if (self._strategySequence[self._currentStrategy].finished or
+        if (self._strategies[-1].finished or
                 dt >= self._strategyTiming[self._currentStrategy]) and \
                 self._currentStrategy < len(self.strategySequence) - 1:
 
-            self._strategySequence[self._currentStrategy].finished = True
+            self._strategies[-1].finished = True
             self._currentStrategy += 1
             # must manually update strategy and controller!
-            self._strategy = self._strategySequence[self._currentStrategy]
-            self.controller = self.strategy.controller
+            self.start(self._currentStrategy)
             self._currentStrategyStartTime = self.boat.time
 
 
@@ -507,7 +525,7 @@ class Square(StrategySequence):
             elif direction == "ccw":
                 vertices = [upper_left, bottom_left, bottom_right, upper_right, upper_left]
                 headings = [-math.pi/2.0, 0.0, math.pi/2.0, math.pi]
-
+        """
         self._strategySequence = \
         [
             DestinationOnly(boat, vertices[0], positionThreshold),
@@ -517,7 +535,32 @@ class Square(StrategySequence):
             StrategySequence(boat, [ChangeHeading(boat, headings[3]), DestinationOnly(boat, vertices[4], positionThreshold)])
         ]
         self._strategy = self._strategySequence[0].strategy
-        self.controller = self._strategy.controller
+        """
+        self._strategySequence = \
+        [
+            (DestinationOnly, (boat, vertices[0], positionThreshold)),
+            (StrategySequence, (boat,
+            [
+                (ChangeHeading, (boat, headings[0])),
+                (DestinationOnly, (boat, vertices[1], positionThreshold))
+            ])),
+            (StrategySequence, (boat,
+            [
+                (ChangeHeading, (boat, headings[1])),
+                (DestinationOnly, (boat, vertices[2], positionThreshold))
+            ])),
+            (StrategySequence, (boat,
+            [
+                (ChangeHeading, (boat, headings[2])),
+                (DestinationOnly, (boat, vertices[3], positionThreshold))
+            ])),
+            (StrategySequence, (boat,
+            [
+                (ChangeHeading, (boat, headings[3])),
+                (DestinationOnly, (boat, vertices[4], positionThreshold))
+            ]))
+        ]
+        self.start(self._currentStrategy)
 
 
 class SingleSpline(Strategy):

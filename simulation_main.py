@@ -169,16 +169,16 @@ if __name__ == '__main__':
             # b.strategy = Strategies.SingleSpline(b, [10, 10], 0.0, 1.0, 1.0)
             # b.strategy = Strategies.Square(b, 1.0, [0, 0], 20.0, "upper_right", "cw")
             # b.strategy = Strategies.Circle(b, [0.0, 0.0], 10.0)
-            # b.strategy = Strategies.TimedStrategySequence(b, [
-            #    Strategies.HoldHeading(b, 2.0),
-            #    Strategies.ChangeHeading(b, math.pi/2),
-            #    Strategies.HoldHeading(b, 2.0),
-            #    Strategies.Square(b, 2.0, [0, 0], 20.0, "upper_right", "cw")
-            #], [2.0, 2.0, 2.0, 20.0])
-            b.strategy = Strategies.StrategySequence(b, [
-                (Strategies.ChangeHeading, (b, math.pi/2.0)),
-                (Strategies.HoldHeading, (b, 2.0))
-            ])
+            b.strategy = Strategies.TimedStrategySequence(b, [
+                (Strategies.HoldHeading, (b, 2.0)),
+                (Strategies.ChangeHeading, (b, math.pi/2)),
+                (Strategies.HoldHeading, (b, 2.0)),
+                (Strategies.Square, (b, 2.0, [0, 0], 20.0, "upper_right", "cw"))
+            ], [2.0, 2.0, 2.0, 15.0])
+            #b.strategy = Strategies.StrategySequence(b, [
+            #    (Strategies.ChangeHeading, (b, math.pi/2.0)),
+            #    (Strategies.HoldHeading, (b, 2.0))
+            #])
 
             None
         elif b.type == "defender":
