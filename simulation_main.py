@@ -9,30 +9,33 @@ import time
 import Boat
 import Strategies
 
+WITH_PLOTTING = True
 GLOBAL_DT = 0.1  # [s]
 TOTAL_TIME = 120  # [s]
-BOAT_COUNT = 150
-ATTACKER_COUNT = 50
+BOAT_COUNT = 12
+ATTACKER_COUNT = 3
 MAX_DEFENDERS_PER_RING = numpy.arange(8.0, 100.0, 2.0)
 RADII_OF_RINGS = numpy.arange(6.0, 600.0, 4.0)
-ATTACKER_REMOVAL_DISTANCE = 2.0
+ATTACKER_REMOVAL_DISTANCE = 1.0
+ASSET_REMOVAL_DISTANCE = 1.0
 
-figx = 20.0
-figy = 10.0
-fig = plt.figure(figsize=(figx, figy))
-# ax = fig.add_subplot(111)
-ax = fig.add_axes([0.01, 0.01, 0.95*figy/figx, 0.95])
-ax.elev = 10
-ax.grid(b=False)  # no grid b/c it won't update correctly
-ax.set_xticks([])  # turn off axis labels b/c they wont update correctly
-ax.set_yticks([])  # turn off axis labels b/c they wont update correctly
-defenders_arrows = None
-attackers_arrows = None
-assets_arrows = None
-plt.ioff()
-fig.show()
-background = fig.canvas.copy_from_bbox(ax.bbox)  # must be below fig.show()!
-fig.canvas.draw()
+if WITH_PLOTTING:
+    figx = 20.0
+    figy = 10.0
+    fig = plt.figure(figsize=(figx, figy))
+    # ax = fig.add_subplot(111)
+    ax = fig.add_axes([0.01, 0.01, 0.95*figy/figx, 0.95])
+    ax.elev = 10
+    ax.grid(b=False)  # no grid b/c it won't update correctly
+    ax.set_xticks([])  # turn off axis labels b/c they wont update correctly
+    ax.set_yticks([])  # turn off axis labels b/c they wont update correctly
+    defenders_arrows = None
+    attackers_arrows = None
+    assets_arrows = None
+    plt.ioff()
+    fig.show()
+    background = fig.canvas.copy_from_bbox(ax.bbox)  # must be below fig.show()!
+    fig.canvas.draw()
 
 
 def plotSystem(assets, defenders, attackers, title_string, plot_time):
@@ -115,31 +118,30 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
     # time.sleep(GLOBAL_DT/10)
 
 
-# TODO - update so number of defenders per ring are a list
 def initialPositions(assets, defenders, attackers):
     # asset always starts at 0,0 - default constructor state
 
     # defenders always start in rings around the asset
     # There is a maximum number
-    number_of_rings = int(math.ceil(len(defenders)/MAX_DEFENDERS_PER_RING))
     defender_id = 0
-    for ring in range(number_of_rings):
+    ring = 0
+    while defender_id < len(defenders):
+        defender_count_in_ring = min(len(defenders) - defender_id, MAX_DEFENDERS_PER_RING[ring])
         radius = RADII_OF_RINGS[ring]
-        per_ring = float(min(len(defenders) - ring*MAX_DEFENDERS_PER_RING, MAX_DEFENDERS_PER_RING))
-        angles = ring*math.pi/MAX_DEFENDERS_PER_RING + \
-                numpy.arange(0.0, 2*math.pi, 2*math.pi/per_ring)
+        angles = numpy.arange(0.0, 2*math.pi, 2*math.pi/defender_count_in_ring)
         if len(angles) == 0:
             angles = [0.0]
-        for j in range(len(angles)):
-            defenders[defender_id].state[0] = radius*math.cos(angles[j])
-            defenders[defender_id].state[1] = radius*math.sin(angles[j])
+        for angle in angles:
+            defenders[defender_id].state[0] = radius*math.cos(angle)
+            defenders[defender_id].state[1] = radius*math.sin(angle)
             defenders[defender_id].state[4] = math.atan2(defenders[defender_id].state[1],
                                                          defenders[defender_id].state[0])
             defender_id += 1
+        ring += 1
 
     # attackers always start at some uniform random polar location, fixed radius 30
     for b in attackers:
-        radius = 20.0
+        radius = 30.0
         angle = numpy.random.uniform(0.0, 2*math.pi, 2)
         x = radius*math.cos(angle[0])
         y = radius*math.sin(angle[0])
@@ -209,7 +211,6 @@ if __name__ == '__main__':
 
             None
         elif b.type == "defender":
-            # TODO - after they kill all the attackers, why do these boats turn to 0.0 and go forward forever???
             b.strategy = Strategies.MoveToClosestAttacker(b)
             # b.strategy = Strategies.DestinationOnly(b, [attackers[0].state[0], attackers[0].state[1]], 1.0)
             # b.strategy = Strategies.ChangeHeading(b, math.pi/2.0)
@@ -226,7 +227,7 @@ if __name__ == '__main__':
             # b.strategy = Strategies.PointAtAsset(b)
             # b.strategy = Strategies.PointAwayFromAsset(b)
             # b.strategy = Strategies.PointWithAsset(b)
-            # b.strategy = Strategies.MoveTowardAsset(b, 1.0)
+            b.strategy = Strategies.MoveTowardAsset(b, 1.0)
             # b.strategy = Strategies.HoldHeading(b, 1.5)
             # b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b), Strategies.HoldHeading(b, 2.0)])
             #b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b),
@@ -249,11 +250,11 @@ if __name__ == '__main__':
         t += dt
         step += 1
 
-        # TODO - if a defender gets within a certain distance of an attacker, remove it from the simulation
         # build location arrays for defenders and attackers
         if len(attackers) > 0:
             X_defenders = numpy.zeros((len(defenders), 2))
             X_attackers = numpy.zeros((len(attackers), 2))
+            X_assets = numpy.zeros((len(assets), 2))
             for j in range(len(defenders)):
                 boat = defenders[j]
                 X_defenders[j, 0] = boat.state[0]
@@ -262,21 +263,37 @@ if __name__ == '__main__':
                 boat = attackers[j]
                 X_attackers[j, 0] = boat.state[0]
                 X_attackers[j, 1] = boat.state[1]
+            for j in range(len(assets)):
+                boat = assets[j]
+                X_assets[j, 0] = boat.state[0]
+                X_assets[j, 1] = boat.state[1]
             # scipy.spatial.distance.cdist
-            pairwise_distances = spatial.distance.cdist(X_defenders, X_attackers)
-            closest_distances = numpy.min(pairwise_distances, 0)
+            atk_vs_asset_pairwise_distances = spatial.distance.cdist(X_assets, X_attackers)
+            atk_vs_asset_minimum_distance = numpy.min(atk_vs_asset_pairwise_distances, 1)
+            if atk_vs_asset_minimum_distance < ASSET_REMOVAL_DISTANCE:
+                print "Simulation ends: Asset was attacked successfully"
+                break
+
+            def_vs_atk_pairwise_distances = spatial.distance.cdist(X_defenders, X_attackers)
+            def_vs_atk_closest_distances = numpy.min(def_vs_atk_pairwise_distances, 0)
             # if any values are less than the distance threshold, remove the attacker
             attackers_to_be_removed = []
-            for d in range(len(closest_distances)):
-                if closest_distances[d] < ATTACKER_REMOVAL_DISTANCE:
+            for d in range(len(def_vs_atk_closest_distances)):
+                if def_vs_atk_closest_distances[d] < ATTACKER_REMOVAL_DISTANCE:
                     # Removal must propagate to anything that needs to know
                     attackers_to_be_removed.append(d)
                     # everything references these main lists, so this should cover all shared memory
             for attacker in reversed(attackers_to_be_removed):
                 # need to delete in backwards order to avoid index conflicts
                 del attackers[attacker]
+        else:
+            # end the simulation
+            print "Simulation Ends: All attackers removed"
+            break
 
         # TODO - may be easy to speed this up when an attacker is obviously outside the bounding box of all defenders
         #        with respect to the asset in the center
 
-        plotSystem(assets, defenders, attackers, "ATTAAAAAACK!!!!", t)
+        if WITH_PLOTTING:
+            plotSystem(assets, defenders, attackers, "ATTAAAAAACK!!!!", t)
+    print "Finished {} simulated seconds in {} real-time seconds".format(t,  time.time() - real_time_zero)
