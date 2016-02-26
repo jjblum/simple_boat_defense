@@ -7,9 +7,10 @@ import PiazziSpline
 # TODO - updating the strategy effectively deletes all the asset, attacker, defender, etc. information that the last strategy held
 #        is there a way to have that information transferred from stategy to strategy?
 
-# TODO - set up a timed strategy, it executes for a specified amount of time then changes
-
 # TODO - an "executive" or "team" strategy that sets the strategy of more than one individuals
+
+# TODO - optional driftDown for movement
+# TODO - moving through a chain of way points
 
 # TODO - LIST OF USEFUL STRATEGIES:
 #   DONE 1a) Move to asset
@@ -525,17 +526,6 @@ class Square(StrategySequence):
             elif direction == "ccw":
                 vertices = [upper_left, bottom_left, bottom_right, upper_right, upper_left]
                 headings = [-math.pi/2.0, 0.0, math.pi/2.0, math.pi]
-        """
-        self._strategySequence = \
-        [
-            DestinationOnly(boat, vertices[0], positionThreshold),
-            StrategySequence(boat, [ChangeHeading(boat, headings[0]), DestinationOnly(boat, vertices[1], positionThreshold)]),
-            StrategySequence(boat, [ChangeHeading(boat, headings[1]), DestinationOnly(boat, vertices[2], positionThreshold)]),
-            StrategySequence(boat, [ChangeHeading(boat, headings[2]), DestinationOnly(boat, vertices[3], positionThreshold)]),
-            StrategySequence(boat, [ChangeHeading(boat, headings[3]), DestinationOnly(boat, vertices[4], positionThreshold)])
-        ]
-        self._strategy = self._strategySequence[0].strategy
-        """
         self._strategySequence = \
         [
             (DestinationOnly, (boat, vertices[0], positionThreshold)),
@@ -660,8 +650,6 @@ class Circle(Strategy):
         self.controller.idealState = numpy.array([x, y, u, w, th, thdot])
 
 
-
-
 """
 class DefensiveLine(Strategy):
     def __init__(self, boat, team, lineCenter, lineHeading, gapBetweenDefenders=5.0):
@@ -688,8 +676,8 @@ class DestinationOnlyExecutor(Executor):
         distance = math.sqrt(math.pow(dx, 2) + math.pow(dy, 2))
         if distance < 10.0:
             self._strategy = StrategySequence(self.boat, [
-                ChangeHeading(self.boat, math.atan2(dy, dx)),
-                DestinationOnly(self.boat, self._destination, self._positionThreshold)
+                (ChangeHeading, (self.boat, math.atan2(dy, dx))),
+                (DestinationOnly, (self.boat, self._destination, self._positionThreshold))
             ])
         else:
             self._strategy = DestinationOnly(self.boat, self._destination, self._positionThreshold)

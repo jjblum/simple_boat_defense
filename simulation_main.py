@@ -10,7 +10,9 @@ import Strategies
 
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
-BOAT_COUNT = 5
+BOAT_COUNT = 12
+MAX_DEFENDERS_PER_RING = 8.0  # must be a float
+RADII_OF_RINGS = numpy.arange(6.0, 60.0, 4.0)
 
 figx = 20.0
 figy = 10.0
@@ -109,6 +111,48 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
     fig.canvas.blit(ax.bbox)
     # time.sleep(GLOBAL_DT/10)
 
+# TODO - finish intitialPositions
+def initialPositions(assets, defenders, attackers):
+    # asset always starts at 0,0 - default constructor state
+
+    # defenders always start in rings around the asset
+    # There is a maximum number
+    number_of_rings = int(math.ceil(len(defenders)/MAX_DEFENDERS_PER_RING))
+    defender_id = 0
+    for ring in range(number_of_rings):
+        radius = RADII_OF_RINGS[ring]
+        per_ring = float(min(len(defenders) - ring*MAX_DEFENDERS_PER_RING, MAX_DEFENDERS_PER_RING))
+        angles = ring*math.pi/MAX_DEFENDERS_PER_RING + \
+                numpy.arange(0.0, 2*math.pi, 2*math.pi/per_ring)
+        if len(angles) == 0:
+            angles = [0.0]
+        for j in range(len(angles)):
+            defenders[defender_id].state[0] = radius*math.cos(angles[j])
+            defenders[defender_id].state[1] = radius*math.sin(angles[j])
+            defenders[defender_id].state[4] = math.atan2(defenders[defender_id].state[1],
+                                                         defenders[defender_id].state[0])
+            defender_id += 1
+
+    # attackers always start at some uniform random polar location, fixed radius 30
+    for b in attackers:
+        radius = 20.0
+        angle = numpy.random.uniform(0.0, 2*math.pi, 2)
+        x = radius*math.cos(angle[0])
+        y = radius*math.sin(angle[0])
+        b.state[0] = x
+        b.state[1] = y
+        b.state[4] = angle[1]
+
+    # for b in defenders:
+        # radius = numpy.random.uniform(6.0, 14.0)
+        # angle = numpy.random.uniform(0.0, 2*math.pi, 2)
+        # x = radius*math.cos(angle[0])
+        # y = radius*math.sin(angle[0])
+        # b.state[0] = x
+        # b.state[1] = y
+        # b.state[4] = angle[1]
+
+
 if __name__ == '__main__':
     # spawn boats objects
 
@@ -129,28 +173,7 @@ if __name__ == '__main__':
         b.assets = assets
 
     # set initial positions
-    # # asset always starts at 0,0
-    for b in assets:
-        b.state[0] = 0.0
-        b.state[1] = 0.0
-    # # defenders always start at some uniform random polar location, radius between 6 and 14
-    for b in defenders:
-        radius = numpy.random.uniform(6.0, 14.0)
-        angle = numpy.random.uniform(0.0, 2*math.pi, 2)
-        x = radius*math.cos(angle[0])
-        y = radius*math.sin(angle[0])
-        b.state[0] = x
-        b.state[1] = y
-        b.state[4] = angle[1]
-    # # attackers always start at some uniform random polar location, fixed radius 30
-    for b in attackers:
-        radius = 20.0
-        angle = numpy.random.uniform(0.0, 2*math.pi, 2)
-        x = radius*math.cos(angle[0])
-        y = radius*math.sin(angle[0])
-        b.state[0] = x
-        b.state[1] = y
-        b.state[4] = angle[1]
+    initialPositions(assets, defenders, attackers)
 
     # plotSystem(boat_list, "Initial positions", 0)
 
@@ -169,12 +192,12 @@ if __name__ == '__main__':
             # b.strategy = Strategies.SingleSpline(b, [10, 10], 0.0, 1.0, 1.0)
             # b.strategy = Strategies.Square(b, 1.0, [0, 0], 20.0, "upper_right", "cw")
             # b.strategy = Strategies.Circle(b, [0.0, 0.0], 10.0)
-            b.strategy = Strategies.TimedStrategySequence(b, [
-                (Strategies.HoldHeading, (b, 2.0)),
-                (Strategies.ChangeHeading, (b, math.pi/2)),
-                (Strategies.HoldHeading, (b, 2.0)),
-                (Strategies.Square, (b, 2.0, [0, 0], 20.0, "upper_right", "cw"))
-            ], [2.0, 2.0, 2.0, 15.0])
+            #b.strategy = Strategies.TimedStrategySequence(b, [
+            #    (Strategies.HoldHeading, (b, 2.0)),
+            #    (Strategies.ChangeHeading, (b, math.pi/2)),
+            #    (Strategies.HoldHeading, (b, 2.0)),
+            #    (Strategies.Square, (b, 2.0, [0, 0], 20.0, "upper_right", "cw"))
+            #], [2.0, 2.0, 2.0, 15.0])
             #b.strategy = Strategies.StrategySequence(b, [
             #    (Strategies.ChangeHeading, (b, math.pi/2.0)),
             #    (Strategies.HoldHeading, (b, 2.0))
@@ -182,10 +205,12 @@ if __name__ == '__main__':
 
             None
         elif b.type == "defender":
+            # b.strategy = Strategies.ChangeHeading(b, math.pi/2.0)
             # b.strategy = Strategies.SingleSpline(b, [assets[0].state[0], assets[0].state[1] + 10], math.pi/2.0, positionThreshold=2.0)
             #b.strategy = Strategies.StrategySequence(b, [
-            #    Strategies.DestinationOnlyExecutor(b, [assets[0].state[0], assets[0].state[1] + 10 - 5], positionThreshold=2.0),
-            #    Strategies.DestinationOnlyExecutor(b, [assets[0].state[0], assets[0].state[1] + 10], positionThreshold=2.0)
+            #    (Strategies.DestinationOnlyExecutor, (b, [assets[0].state[0], assets[0].state[1] + 5], 1.0)),
+            #    (Strategies.DestinationOnlyExecutor, (b, [assets[0].state[0], assets[0].state[1] + 10], 1.0)),
+            #    (Strategies.ChangeHeading, (b, math.pi/2.0))
             #])
             #b.strategy = Strategies.DestinationOnlyExecutor(b, [assets[0].state[0], assets[0].state[1] + 10], positionThreshold=1.0)
             None
