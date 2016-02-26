@@ -1,6 +1,7 @@
 import numpy
 import matplotlib.pyplot as plt
 import scipy.integrate as spi
+import scipy.spatial as spatial
 import pylab
 import math
 import time
@@ -8,11 +9,13 @@ import time
 import Boat
 import Strategies
 
-GLOBAL_DT = 0.05  # [s]
+GLOBAL_DT = 0.1  # [s]
 TOTAL_TIME = 120  # [s]
-BOAT_COUNT = 12
-MAX_DEFENDERS_PER_RING = 8.0  # must be a float
-RADII_OF_RINGS = numpy.arange(6.0, 60.0, 4.0)
+BOAT_COUNT = 150
+ATTACKER_COUNT = 50
+MAX_DEFENDERS_PER_RING = numpy.arange(8.0, 100.0, 2.0)
+RADII_OF_RINGS = numpy.arange(6.0, 600.0, 4.0)
+ATTACKER_REMOVAL_DISTANCE = 2.0
 
 figx = 20.0
 figy = 10.0
@@ -75,7 +78,7 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
 
     for boat in defenders:
         if boat.plotData is not None:
-            ax.draw_artist(ax.plot(boat.plotData[:, 0], boat.plotData[:, 1], 'k-', linewidth=3.0)[0])
+            ax.draw_artist(ax.plot(boat.plotData[:, 0], boat.plotData[:, 1], 'k-', linewidth=0.1)[0])
 
     # plt.title(title_string + " time = {tt} s".format(tt=plot_time))
     # rectangle coords
@@ -111,7 +114,8 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
     fig.canvas.blit(ax.bbox)
     # time.sleep(GLOBAL_DT/10)
 
-# TODO - finish intitialPositions
+
+# TODO - update so number of defenders per ring are a list
 def initialPositions(assets, defenders, attackers):
     # asset always starts at 0,0 - default constructor state
 
@@ -160,7 +164,7 @@ if __name__ == '__main__':
 
     # set boat types
     boat_list[0].type = "asset"
-    for b in boat_list[-4:-1]:
+    for b in boat_list[-1 - ATTACKER_COUNT:-1]:
         b.type = "attacker"
 
     attackers = [b for b in boat_list if b.type == "attacker"]
@@ -205,6 +209,9 @@ if __name__ == '__main__':
 
             None
         elif b.type == "defender":
+            # TODO - after they kill all the attackers, why do these boats turn to 0.0 and go forward forever???
+            b.strategy = Strategies.MoveToClosestAttacker(b)
+            # b.strategy = Strategies.DestinationOnly(b, [attackers[0].state[0], attackers[0].state[1]], 1.0)
             # b.strategy = Strategies.ChangeHeading(b, math.pi/2.0)
             # b.strategy = Strategies.SingleSpline(b, [assets[0].state[0], assets[0].state[1] + 10], math.pi/2.0, positionThreshold=2.0)
             #b.strategy = Strategies.StrategySequence(b, [
@@ -241,4 +248,35 @@ if __name__ == '__main__':
                 #print b.state[0], b.state[1], b.state[4]
         t += dt
         step += 1
+
+        # TODO - if a defender gets within a certain distance of an attacker, remove it from the simulation
+        # build location arrays for defenders and attackers
+        if len(attackers) > 0:
+            X_defenders = numpy.zeros((len(defenders), 2))
+            X_attackers = numpy.zeros((len(attackers), 2))
+            for j in range(len(defenders)):
+                boat = defenders[j]
+                X_defenders[j, 0] = boat.state[0]
+                X_defenders[j, 1] = boat.state[1]
+            for j in range(len(attackers)):
+                boat = attackers[j]
+                X_attackers[j, 0] = boat.state[0]
+                X_attackers[j, 1] = boat.state[1]
+            # scipy.spatial.distance.cdist
+            pairwise_distances = spatial.distance.cdist(X_defenders, X_attackers)
+            closest_distances = numpy.min(pairwise_distances, 0)
+            # if any values are less than the distance threshold, remove the attacker
+            attackers_to_be_removed = []
+            for d in range(len(closest_distances)):
+                if closest_distances[d] < ATTACKER_REMOVAL_DISTANCE:
+                    # Removal must propagate to anything that needs to know
+                    attackers_to_be_removed.append(d)
+                    # everything references these main lists, so this should cover all shared memory
+            for attacker in reversed(attackers_to_be_removed):
+                # need to delete in backwards order to avoid index conflicts
+                del attackers[attacker]
+
+        # TODO - may be easy to speed this up when an attacker is obviously outside the bounding box of all defenders
+        #        with respect to the asset in the center
+
         plotSystem(assets, defenders, attackers, "ATTAAAAAACK!!!!", t)

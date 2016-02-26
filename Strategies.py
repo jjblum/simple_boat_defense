@@ -1,6 +1,7 @@
 import abc  # abstract base classes
 import math
 import numpy
+import scipy.spatial as spatial
 import Controllers
 import PiazziSpline
 
@@ -179,10 +180,6 @@ class StrategySequence(Strategy):
         return self._strategies[-1].idealState()
 
 
-# TODO - ISSUE: Sequence instantiates all strategies in it when itself is instantiated. This ruins executors that run pickStrategy only once
-# TODO -        Isn't there a way to not instantiate something until later? Maybe the sequence could just be classes rather than real objects? idk
-# Yeah....what if you pass a tuple instead of the strategy directly: (Strategy class,(args))
-# Then, when you switch to the next strategy, you instantiate it at that moment?
 class Executor(Strategy):
     __metaclass__ = abc.ABCMeta
 
@@ -327,7 +324,7 @@ class HoldHeading(Strategy):
 
 class DestinationOnly(Strategy):
     # a strategy that only returns the final destination location
-    def __init__(self, boat, destination, positionThreshold, driftDown=True):
+    def __init__(self, boat, destination, positionThreshold=1.0, driftDown=True):
         super(DestinationOnly, self).__init__(boat)
         self._destinationState = destination
         self.controller = Controllers.PointAndShootPID(boat, positionThreshold, driftDown)
@@ -358,7 +355,6 @@ class DestinationOnly(Strategy):
     def idealState(self):
         self.boat.plotData = numpy.atleast_2d(numpy.array([[self.boat.state[0],self.boat.state[1]], self._destinationState]))
         self.controller.idealState = self.destinationState  # update this here so the controller doesn't need to import Strategies
-        return self.destinationState
 
 
 class PointAtAsset(Strategy):
@@ -682,3 +678,36 @@ class DestinationOnlyExecutor(Executor):
         else:
             self._strategy = DestinationOnly(self.boat, self._destination, self._positionThreshold)
         self._readyToPickStrategy = False  # only make this decision once!
+
+
+class MoveToClosestAttacker(Strategy):
+    def __init__(self, boat):
+        super(MoveToClosestAttacker, self).__init__(boat)
+        self.controller = Controllers.PointAndShootPID(boat, 1.0, False)
+
+    def idealState(self):
+        state = numpy.zeros((6,))
+        if len(self._attackers) > 0:
+            attackers = self._attackers
+            X_defenders = numpy.zeros((1, 2))
+            X_attackers = numpy.zeros((len(attackers), 2))
+            X_defenders[0, 0] = self.boat.state[0]
+            X_defenders[0, 1] = self.boat.state[1]
+            for j in range(len(attackers)):
+                boat = attackers[j]
+                X_attackers[j, 0] = boat.state[0]
+                X_attackers[j, 1] = boat.state[1]
+            pairwise_distances = spatial.distance.cdist(X_defenders, X_attackers)
+            closest_attacker = numpy.argmin(pairwise_distances, 1)
+            state[0] = attackers[closest_attacker].state[0]
+            state[1] = attackers[closest_attacker].state[1]
+        else:
+            state[0] = self.boat.state[0]
+            state[1] = self.boat.state[1]
+            state[2] = 0.0
+            self.finished = True
+            self.controller.finished = True
+        self.controller.idealState = state
+        self.boat.plotData = numpy.atleast_2d(numpy.array([
+            [self.boat.state[0], self.boat.state[1]], [state[0], state[1]]
+        ]))

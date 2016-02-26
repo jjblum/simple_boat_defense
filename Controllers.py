@@ -228,11 +228,14 @@ class PointAndShootPID(Controller):
         #print "surge error = {}".format(error_u)
         error_pos = math.sqrt(math.pow(error_x, 2.0) + math.pow(error_y, 2.0))
 
-        # if the position error is less than some threshold nd velocity is near zero, turn thrustFraction to 0
-        if error_pos < self._positionThreshold and math.sqrt(math.pow(state[2], 2.0)+math.pow(state[3], 2.0)) < 0.1:
+        # if the position error is less than some threshold and velocity is near zero, turn thrustFraction to 0
+        if error_pos < self._positionThreshold and math.sqrt(math.pow(state[2], 2.0) + math.pow(state[3], 2.0)) < 0.1:
             # because this is where we might set finished to True, it
             # needs to be before any other returns that might make it impossible to reach
             self.finished = True
+            return 0.0, 0.0
+
+        if self.finished:
             return 0.0, 0.0
 
         angleToGoal = math.atan2(error_y, error_x)
