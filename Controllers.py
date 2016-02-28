@@ -265,6 +265,24 @@ class PointAndShootPID(Controller):
 
         return thrustFraction, momentFraction
 
+
+class LineOfSight(Controller):
+    """
+        Integral LOS Control for Path Following of Underactuated Marine Surface Vessels in the
+        Presence of Constant Ocean Currents
+        Borhug et. al 2008
+
+        Ideal boat does not propagate based on time or velocity, it is always some distance ahead.
+        This distance changes as curvature changes.
+        Only heading and surge velocity are controlled.
+    """
+    def __init__(self, boat, surgeVelocity=1.0):
+        super(LineOfSight, self).__init__()
+
+    def actuationEffortFractions(self):
+        return
+
+
 """
 class AicardiPathFollower(Controller):
     # Aicardi et. al. 2001 "A planar path following controller for underactuated marine vehicles"

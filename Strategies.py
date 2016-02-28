@@ -8,10 +8,11 @@ import PiazziSpline
 # TODO - updating the strategy effectively deletes all the asset, attacker, defender, etc. information that the last strategy held
 #        is there a way to have that information transferred from stategy to strategy?
 
-# TODO - an "executive" or "team" strategy that sets the strategy of more than one individuals
+# TODO - an "overseer" or "team" strategy that sets the strategy of more than one individuals
 
-# TODO - optional driftDown for movement
 # TODO - moving through a chain of way points
+
+# TODO - planning a path through vulnerabilities
 
 # TODO - LIST OF USEFUL STRATEGIES:
 #   DONE 1a) Move to asset
@@ -328,7 +329,6 @@ class DestinationOnly(Strategy):
         super(DestinationOnly, self).__init__(boat)
         self._destinationState = destination
         self.controller = Controllers.PointAndShootPID(boat, positionThreshold, driftDown)
-        self._driftDown = driftDown
 
     @property
     def destinationState(self):
@@ -566,7 +566,7 @@ class SingleSpline(Strategy):
         self.generateSpline()
         self._positionThreshold = positionThreshold
         self.controller = Controllers.PointAndShootPID(boat, 0.0)
-        #self.controller = Controllers.AicardiPathFollower(boat, thrustConstant=surgeVelocity)
+        
 
     def generateSpline(self):
         x0 = self.boat.state[0]
@@ -711,3 +711,5 @@ class MoveToClosestAttacker(Strategy):
         self.boat.plotData = numpy.atleast_2d(numpy.array([
             [self.boat.state[0], self.boat.state[1]], [state[0], state[1]]
         ]))
+
+

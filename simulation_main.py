@@ -8,14 +8,16 @@ import time
 
 import Boat
 import Strategies
+import Overseer
 
+SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
 WITH_PLOTTING = True
 GLOBAL_DT = 0.1  # [s]
 TOTAL_TIME = 120  # [s]
-BOAT_COUNT = 12
-ATTACKER_COUNT = 3
+BOAT_COUNT = 20
+ATTACKER_COUNT = 5
 MAX_DEFENDERS_PER_RING = numpy.arange(8.0, 100.0, 2.0)
-RADII_OF_RINGS = numpy.arange(6.0, 600.0, 4.0)
+RADII_OF_RINGS = numpy.arange(10.0, 600.0, 5.0)
 ATTACKER_REMOVAL_DISTANCE = 1.0
 ASSET_REMOVAL_DISTANCE = 1.0
 
@@ -118,27 +120,26 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
     # time.sleep(GLOBAL_DT/10)
 
 
-def initialPositions(assets, defenders, attackers):
-    # asset always starts at 0,0 - default constructor state
+def formDefenderRings(defenders):
+        # defenders always start in rings around the asset
+        defender_id = 0
+        ring = 0
+        while defender_id < len(defenders):
+            defender_count_in_ring = min(len(defenders) - defender_id, MAX_DEFENDERS_PER_RING[ring])
+            radius = RADII_OF_RINGS[ring]
+            angles = numpy.arange(0.0, 2*math.pi, 2*math.pi/defender_count_in_ring)
+            if len(angles) == 0:
+                angles = [0.0]
+            for angle in angles:
+                defenders[defender_id].state[0] = radius*math.cos(angle)
+                defenders[defender_id].state[1] = radius*math.sin(angle)
+                defenders[defender_id].state[4] = math.atan2(defenders[defender_id].state[1],
+                                                             defenders[defender_id].state[0])
+                defender_id += 1
+            ring += 1
 
-    # defenders always start in rings around the asset
-    # There is a maximum number
-    defender_id = 0
-    ring = 0
-    while defender_id < len(defenders):
-        defender_count_in_ring = min(len(defenders) - defender_id, MAX_DEFENDERS_PER_RING[ring])
-        radius = RADII_OF_RINGS[ring]
-        angles = numpy.arange(0.0, 2*math.pi, 2*math.pi/defender_count_in_ring)
-        if len(angles) == 0:
-            angles = [0.0]
-        for angle in angles:
-            defenders[defender_id].state[0] = radius*math.cos(angle)
-            defenders[defender_id].state[1] = radius*math.sin(angle)
-            defenders[defender_id].state[4] = math.atan2(defenders[defender_id].state[1],
-                                                         defenders[defender_id].state[0])
-            defender_id += 1
-        ring += 1
 
+def randomAttackers(attackers):
     # attackers always start at some uniform random polar location, fixed radius 30
     for b in attackers:
         radius = 30.0
@@ -149,14 +150,35 @@ def initialPositions(assets, defenders, attackers):
         b.state[1] = y
         b.state[4] = angle[1]
 
-    # for b in defenders:
-        # radius = numpy.random.uniform(6.0, 14.0)
-        # angle = numpy.random.uniform(0.0, 2*math.pi, 2)
-        # x = radius*math.cos(angle[0])
-        # y = radius*math.sin(angle[0])
-        # b.state[0] = x
-        # b.state[1] = y
-        # b.state[4] = angle[1]
+
+def initialPositions(assets, defenders, attackers, type="static_ring"):
+    if type == "static_ring":
+        formDefenderRings(defenders)
+        randomAttackers(attackers)
+
+    elif type == "convoy":
+        formDefenderRings(defenders)
+        for b in defenders:
+            b.state[4] = 0.0  # align with asset
+        randomAttackers(attackers)
+
+
+def initialStrategy(assets, defenders, attackers, type="static_ring"):
+    if type == "static_ring":
+        for b in boat_list:
+            # asset does nothing
+            if b.type == "defender":
+                b.strategy = Strategies.MoveToClosestAttacker(b)
+            else:
+                b.strategy = Strategies.MoveTowardAsset(b, 1.0)
+    elif type == "convoy":
+        for b in boat_list:
+            if b.type == "asset":
+                b.strategy = Strategies.HoldHeading(b, 1.0)
+            elif b.type == "defender":
+                b.strategy = Strategies.HoldHeading(b, 1.0)
+            else:
+                b.strategy = Strategies.MoveTowardAsset(b, 1.0)
 
 
 if __name__ == '__main__':
@@ -172,71 +194,25 @@ if __name__ == '__main__':
     attackers = [b for b in boat_list if b.type == "attacker"]
     defenders = [b for b in boat_list if b.type == "defender"]
     assets = [b for b in boat_list if b.type == "asset"]
+    overseer = Overseer.Overseer(assets, defenders, attackers)
+    overseer.attackers = attackers
+    overseer.defenders = defenders
+    overseer.assets = assets
     for b in boat_list:
         b.boatList = boat_list
         b.attackers = attackers
         b.defenders = defenders
         b.assets = assets
 
-    # set initial positions
-    initialPositions(assets, defenders, attackers)
-
-    # plotSystem(boat_list, "Initial positions", 0)
+    # set initial positions and strategies
+    initialPositions(assets, defenders, attackers, SIMULATION_TYPE)
+    initialStrategy(assets, defenders, attackers, SIMULATION_TYPE)
 
     # move asset using ODE integration
     real_time_zero = time.time()
     t = 0.0
     dt = GLOBAL_DT
     step = 1
-    for b in boat_list:
-        if b.type == "asset":
-            # asset_u0 = 0.1
-            # b.state = numpy.array([0.0, 0.0, asset_u0, 0.0, 0.0, 0.0])
-            # b.strategy = Strategies.DestinationOnly(b, [-5, 5], 1.0)
-            # b.strategy = Strategies.ChangeHeading(b, numpy.pi/2.0)
-            # b.strategy = Strategies.HoldHeading(b, 1.5)
-            # b.strategy = Strategies.SingleSpline(b, [10, 10], 0.0, 1.0, 1.0)
-            # b.strategy = Strategies.Square(b, 1.0, [0, 0], 20.0, "upper_right", "cw")
-            # b.strategy = Strategies.Circle(b, [0.0, 0.0], 10.0)
-            #b.strategy = Strategies.TimedStrategySequence(b, [
-            #    (Strategies.HoldHeading, (b, 2.0)),
-            #    (Strategies.ChangeHeading, (b, math.pi/2)),
-            #    (Strategies.HoldHeading, (b, 2.0)),
-            #    (Strategies.Square, (b, 2.0, [0, 0], 20.0, "upper_right", "cw"))
-            #], [2.0, 2.0, 2.0, 15.0])
-            #b.strategy = Strategies.StrategySequence(b, [
-            #    (Strategies.ChangeHeading, (b, math.pi/2.0)),
-            #    (Strategies.HoldHeading, (b, 2.0))
-            #])
-
-            None
-        elif b.type == "defender":
-            b.strategy = Strategies.MoveToClosestAttacker(b)
-            # b.strategy = Strategies.DestinationOnly(b, [attackers[0].state[0], attackers[0].state[1]], 1.0)
-            # b.strategy = Strategies.ChangeHeading(b, math.pi/2.0)
-            # b.strategy = Strategies.SingleSpline(b, [assets[0].state[0], assets[0].state[1] + 10], math.pi/2.0, positionThreshold=2.0)
-            #b.strategy = Strategies.StrategySequence(b, [
-            #    (Strategies.DestinationOnlyExecutor, (b, [assets[0].state[0], assets[0].state[1] + 5], 1.0)),
-            #    (Strategies.DestinationOnlyExecutor, (b, [assets[0].state[0], assets[0].state[1] + 10], 1.0)),
-            #    (Strategies.ChangeHeading, (b, math.pi/2.0))
-            #])
-            #b.strategy = Strategies.DestinationOnlyExecutor(b, [assets[0].state[0], assets[0].state[1] + 10], positionThreshold=1.0)
-            None
-        else:
-            #b.strategy = Strategies.SingleSpline(b, [assets[0].state[0], assets[0].state[1] + 10], math.pi/2.0, positionThreshold=2.0)
-            # b.strategy = Strategies.PointAtAsset(b)
-            # b.strategy = Strategies.PointAwayFromAsset(b)
-            # b.strategy = Strategies.PointWithAsset(b)
-            b.strategy = Strategies.MoveTowardAsset(b, 1.0)
-            # b.strategy = Strategies.HoldHeading(b, 1.5)
-            # b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b), Strategies.HoldHeading(b, 2.0)])
-            #b.strategy = Strategies.StrategySequence(b, [Strategies.PointAtAsset(b),
-            #                    Strategies.DestinationOnly(b, [assets[0].state[0], b.state[1]], 1.0),
-            #                    Strategies.PointAtAsset(b)])
-            #b.strategy = Strategies.StrategySequence(b, [Strategies.DestinationOnly(b, [5, 5], 2.0),
-            #                                             Strategies.StrategySequence(b, [Strategies.PointAtAsset(b),
-            #                                                                             Strategies.HoldHeading(b, 0.5)])])
-            None
 
     while t < TOTAL_TIME:
         times = numpy.linspace(t, t+dt, 2)
@@ -245,13 +221,11 @@ if __name__ == '__main__':
             b.control()
             states = spi.odeint(Boat.ode, b.state, times, (b,))
             b.state = states[1]
-            #if b.type == "asset":
-                #print b.state[0], b.state[1], b.state[4]
         t += dt
         step += 1
 
-        # build location arrays for defenders and attackers
         if len(attackers) > 0:
+            # build location arrays for defenders, attackers, and assets
             X_defenders = numpy.zeros((len(defenders), 2))
             X_attackers = numpy.zeros((len(attackers), 2))
             X_assets = numpy.zeros((len(assets), 2))
@@ -269,23 +243,23 @@ if __name__ == '__main__':
                 X_assets[j, 1] = boat.state[1]
             # scipy.spatial.distance.cdist
             atk_vs_asset_pairwise_distances = spatial.distance.cdist(X_assets, X_attackers)
+            overseer.atk_vs_asset_pairwise_distances = atk_vs_asset_pairwise_distances  # inform the overseer
             atk_vs_asset_minimum_distance = numpy.min(atk_vs_asset_pairwise_distances, 1)
             if atk_vs_asset_minimum_distance < ASSET_REMOVAL_DISTANCE:
                 print "Simulation ends: Asset was attacked successfully"
                 break
 
             def_vs_atk_pairwise_distances = spatial.distance.cdist(X_defenders, X_attackers)
+            overseer.def_vs_atk_pairwise_distances = def_vs_atk_pairwise_distances  # inform the overseer
             def_vs_atk_closest_distances = numpy.min(def_vs_atk_pairwise_distances, 0)
             # if any values are less than the distance threshold, remove the attacker
             attackers_to_be_removed = []
             for d in range(len(def_vs_atk_closest_distances)):
                 if def_vs_atk_closest_distances[d] < ATTACKER_REMOVAL_DISTANCE:
-                    # Removal must propagate to anything that needs to know
                     attackers_to_be_removed.append(d)
                     # everything references these main lists, so this should cover all shared memory
             for attacker in reversed(attackers_to_be_removed):
-                # need to delete in backwards order to avoid index conflicts
-                del attackers[attacker]
+                del attackers[attacker] # need to delete in backwards order to avoid index conflicts
         else:
             # end the simulation
             print "Simulation Ends: All attackers removed"
