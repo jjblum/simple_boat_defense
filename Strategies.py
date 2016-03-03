@@ -1,9 +1,10 @@
 import abc  # abstract base classes
 import math
-import numpy
+import numpy as np
 import scipy.spatial as spatial
 import Controllers
 import PiazziSpline
+import Utility
 
 # TODO - updating the strategy effectively deletes all the asset, attacker, defender, etc. information that the last strategy held
 #        is there a way to have that information transferred from stategy to strategy?
@@ -254,7 +255,7 @@ class DoNothing(Strategy):
         self.controller = Controllers.DoNothing()
 
     def idealState(self):
-        return numpy.zeros((6,))
+        return np.zeros((6,))
 
 
 class StationKeep(Strategy):
@@ -265,7 +266,7 @@ class StationKeep(Strategy):
 
     def idealState(self):
         # rabbit boat sits at the boats current location
-        state = numpy.zeros((6,))
+        state = np.zeros((6,))
         state[0] = self.boat.state[0]
         state[1] = self.boat.state[1]
         state[4] = self.boat.state[4]
@@ -290,7 +291,7 @@ class ChangeHeading(Strategy):
 
     def idealState(self):
         # rabbit boat is at the boat's current location, just rotated
-        state = numpy.zeros((6,))
+        state = np.zeros((6,))
         state[0] = self.boat.state[0]
         state[1] = self.boat.state[1]
         state[4] = self._desiredHeading
@@ -307,7 +308,7 @@ class HoldHeading(Strategy):
 
     def idealState(self):
         # rabbit boat moves forward at fixed velocity
-        state = numpy.zeros((6,))
+        state = np.zeros((6,))
         u = self._surgeVelocity
         th = self.boat.state[4]
         thdot = self.boat.state[5]
@@ -340,20 +341,20 @@ class DestinationOnly(Strategy):
             self._destinationState = destinationState_in
         elif len(destinationState_in) == 3:
             # assuming they are using x, y, th
-            state = numpy.zeros((6,))
+            state = np.zeros((6,))
             state[0] = destinationState_in[0]
             state[1] = destinationState_in[1]
             state[4] = destinationState_in[2]
             self._destinationState = state
         elif len(destinationState_in) == 2:
             # assuming they are using x, y
-            state = numpy.zeros((6,))
+            state = np.zeros((6,))
             state[0] = destinationState_in[0]
             state[1] = destinationState_in[1]
             self._destinationState = state
 
     def idealState(self):
-        self.boat.plotData = numpy.atleast_2d(numpy.array([[self.boat.state[0],self.boat.state[1]], self._destinationState]))
+        self.boat.plotData = np.atleast_2d(np.array([[self.boat.state[0], self.boat.state[1]], [self._destinationState[0], self._destinationState[1]]]))
         self.controller.idealState = self.destinationState  # update this here so the controller doesn't need to import Strategies
 
 
@@ -385,8 +386,8 @@ class PointAtAsset(Strategy):
         y = self.boat.state[1]
         assets_x = [b.state[0] for b in self.assets]
         assets_y = [b.state[1] for b in self.assets]
-        asset_x = numpy.mean(assets_x)
-        asset_y = numpy.mean(assets_y)
+        asset_x = np.mean(assets_x)
+        asset_y = np.mean(assets_y)
         return math.atan2(asset_y - y, asset_x - x)
 
     def idealState(self):
@@ -421,8 +422,8 @@ class PointAwayFromAsset(Strategy):
         y = self.boat.state[1]
         assets_x = [b.state[0] for b in self.assets]
         assets_y = [b.state[1] for b in self.assets]
-        asset_x = numpy.mean(assets_x)
-        asset_y = numpy.mean(assets_y)
+        asset_x = np.mean(assets_x)
+        asset_y = np.mean(assets_y)
         return math.atan2(asset_y - y, asset_x - x) + math.pi
 
     def idealState(self):
@@ -475,7 +476,7 @@ class MoveTowardAsset(Strategy):
 
     def idealState(self):
         self._strategy.destinationState = [self.assets[0].state[0], self.assets[0].state[1]]
-        return self._strategy.idealState()
+        self._strategy.idealState()
 
 
 class Square(StrategySequence):
@@ -487,10 +488,10 @@ class Square(StrategySequence):
         self._strategySequence = list()
         self._currentStrategy = 0  # index of the current strategy
 
-        bottom_left = list(numpy.array(center) + numpy.array([-edgeSize/2.0, -edgeSize/2.0]))
-        bottom_right = list(numpy.array(center) + numpy.array([edgeSize/2.0, -edgeSize/2.0]))
-        upper_right = list(numpy.array(center) + numpy.array([edgeSize/2.0, edgeSize/2.0]))
-        upper_left = list(numpy.array(center) + numpy.array([-edgeSize/2.0, edgeSize/2.0]))
+        bottom_left = list(np.array(center) + np.array([-edgeSize/2.0, -edgeSize/2.0]))
+        bottom_right = list(np.array(center) + np.array([edgeSize/2.0, -edgeSize/2.0]))
+        upper_right = list(np.array(center) + np.array([edgeSize/2.0, edgeSize/2.0]))
+        upper_left = list(np.array(center) + np.array([-edgeSize/2.0, edgeSize/2.0]))
         vertices = list()
         headings = list()
         if firstCorner == "bottom_left":
@@ -524,7 +525,7 @@ class Square(StrategySequence):
                 headings = [-math.pi/2.0, 0.0, math.pi/2.0, math.pi]
         self._strategySequence = \
         [
-            (DestinationOnly, (boat, vertices[0], positionThreshold)),
+            (DestinationOnlyExecutor, (boat, vertices[0], positionThreshold)),
             (StrategySequence, (boat,
             [
                 (ChangeHeading, (boat, headings[0])),
@@ -551,22 +552,33 @@ class Square(StrategySequence):
 
 class SingleSpline(Strategy):
     # follow a single Piazzi spline to destination
-    def __init__(self, boat, destination, finalHeading=0.0, surgeVelocity=1.0, positionThreshold=1.0):
+    """
+        Integral LOS Control for Path Following of Underactuated Marine Surface Vessels in the
+        Presence of Constant Ocean Currents
+        Borhug et. al 2008
+
+        Ideal boat does not propagate based on time or velocity, it is always some distance ahead.
+        This distance changes as curvature changes.
+        Only heading and surge velocity are controlled.
+    """
+    def __init__(self, boat, destination, finalHeading=0.0, surgeVelocity=1.0, positionThreshold=1.0, N=1000):
         super(SingleSpline, self).__init__(boat)
         self._destination = destination
         self._surgeVelocity = surgeVelocity
         self._finalHeading = finalHeading
-        self._N = 100  # points along the spline
-        self._progress = None
+        self._N = N  # points along the spline
+        self._length = None
         self._sx = None
         self._sy = None
         self._sth = None
-        self._length = None
-        self._t0 = boat.time
+        self._totalLength = None
+        self._t = boat.time
         self.generateSpline()
         self._positionThreshold = positionThreshold
-        self.controller = Controllers.PointAndShootPID(boat, 0.0)
-        
+        self._sigma = 0.1
+        self._lookAheadLength = 1.0  # want this to change with curvature
+        self._errorAccumulator = 0.0  # initialize the integral action
+        self.controller = Controllers.LineOfSight(boat)
 
     def generateSpline(self):
         x0 = self.boat.state[0]
@@ -575,23 +587,31 @@ class SingleSpline(Strategy):
         y1 = self._destination[1]
         th0 = self.boat.state[4]
         th1 = self._finalHeading
-        self._sx, self._sy, self._sth, self._length = PiazziSpline.piazziSpline(x0, y0, th0, x1, y1, th1)
-        self._progress = numpy.linspace(0.0, self._length, self._N)  # fraction of progress along the line
-        # print numpy.c_[self._progress, self._sx, self._sy, self._sth]
+        self._sx, self._sy, self._sth, self._length = PiazziSpline.piazziSpline(x0, y0, th0, x1, y1, th1, N=self._N)
+        self.boat.plotData = np.column_stack((self._sx, self._sy))
+        # print np.c_[self._progress, self._sx, self._sy, self._sth]
 
     def idealState(self):
-        # linear interpolation to find position along spline length?
-        totalTime = self.boat.time - self._t0 + 1.0
-        lengthTraveled = self._surgeVelocity*totalTime
-        if lengthTraveled > 0.5*self._length:
-            self.controller.positionThreshold = self._positionThreshold
-        state = numpy.zeros((6,))
-        state[0] = numpy.interp(lengthTraveled, self._progress, self._sx)
-        state[1] = numpy.interp(lengthTraveled, self._progress, self._sy)
+        dt = self.boat.time - self._t
+        self._t = self.boat.time
+        # find closest point on the spline
+        s_star, closest, error_y = Utility.closestPointOnSpline2D(self._length, self._sx, self._sy, self.boat.state[0], self.boat.state[1])
+        print "boat y = {}, distance to spline = {}".format(self.boat.state[1], error_y)
+        tangent_th = np.interp(s_star, self._length, self._sth)
+        # we don't just go in straight lines, so find the location that is lookaheadDistance forward on the spline
+        lookaheadState = Utility.splineToEuclidean2D(self._length, self._sx, self._sy, s_star + self._lookAheadLength)
+        #dy = lookaheadState[0] - closest[0]  # normal to path tangent
+        #dx = lookaheadState[1] - closest[1]  # along path tangent
+        #self._errorAccumulator += dt*self._lookAheadLength*error_y/(math.pow(error_y + self._sigma*self._errorAccumulator, 2) + math.pow(self._lookAheadLength, 2))
+        self._errorAccumulator = 0.0
+        #self._errorAccumulator += dt*dx*(error_y - dy)/(
+        #    math.pow(error_y + self._sigma*self._errorAccumulator - dy, 2) + math.pow(dx, 2))
+
+        state = np.zeros((6,))
+        state[4] = tangent_th - math.atan((error_y + self._sigma*self._errorAccumulator)/self._lookAheadLength)
+        #print "s_star = {}, closest = {}".format(s_star, closest)
+        #state[4] = -math.atan((error_y + self._sigma*self._errorAccumulator - dy)/dx)
         state[2] = self._surgeVelocity
-        state[3] = 0.0
-        state[4] = numpy.interp(lengthTraveled, self._progress, self._sth)
-        # state[5] = ? leave as zero for now
         self.controller.idealState = state
 
 
@@ -643,7 +663,7 @@ class Circle(Strategy):
         u = self._speed
         w = 0.0
         thdot = self._thetaDot
-        self.controller.idealState = numpy.array([x, y, u, w, th, thdot])
+        self.controller.idealState = np.array([x, y, u, w, th, thdot])
 
 
 """
@@ -686,11 +706,11 @@ class MoveToClosestAttacker(Strategy):
         self.controller = Controllers.PointAndShootPID(boat, 1.0, False)
 
     def idealState(self):
-        state = numpy.zeros((6,))
+        state = np.zeros((6,))
         if len(self._attackers) > 0:
             attackers = self._attackers
-            X_defenders = numpy.zeros((1, 2))
-            X_attackers = numpy.zeros((len(attackers), 2))
+            X_defenders = np.zeros((1, 2))
+            X_attackers = np.zeros((len(attackers), 2))
             X_defenders[0, 0] = self.boat.state[0]
             X_defenders[0, 1] = self.boat.state[1]
             for j in range(len(attackers)):
@@ -698,7 +718,7 @@ class MoveToClosestAttacker(Strategy):
                 X_attackers[j, 0] = boat.state[0]
                 X_attackers[j, 1] = boat.state[1]
             pairwise_distances = spatial.distance.cdist(X_defenders, X_attackers)
-            closest_attacker = numpy.argmin(pairwise_distances, 1)
+            closest_attacker = np.argmin(pairwise_distances, 1)
             state[0] = attackers[closest_attacker].state[0]
             state[1] = attackers[closest_attacker].state[1]
         else:
@@ -708,7 +728,7 @@ class MoveToClosestAttacker(Strategy):
             self.finished = True
             self.controller.finished = True
         self.controller.idealState = state
-        self.boat.plotData = numpy.atleast_2d(numpy.array([
+        self.boat.plotData = np.atleast_2d(np.array([
             [self.boat.state[0], self.boat.state[1]], [state[0], state[1]]
         ]))
 

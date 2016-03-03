@@ -76,7 +76,7 @@ def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, 
         b5*np.power(u, 5) + b6*np.power(u, 6) + b7*np.power(u, 7)
     dx = np.r_[0.0, np.diff(sx)]
     dy = np.r_[0.0, np.diff(sy)]
-    total_length = np.sum(np.sqrt(np.power(dx, 2) + np.power(dy, 2)))
+    length = np.cumsum(np.sqrt(np.power(dx, 2) + np.power(dy, 2)))
     sth = np.arctan2(dy, dx)/m.pi  # multiples of pi
     # need to find singularity jumps and patch them
     dth = np.r_[0.0, np.diff(sth)]
@@ -84,7 +84,7 @@ def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, 
     singularities = np.where(np.abs(np.abs(dth) - 0.5) < m.pow(10., -4))
     # erroneous sth jumps from pi/2 or -pi/2 to 0, so correct sth should be approx. equal to erroneous dth
     sth[singularities] = dth[singularities]
-    return sx, sy, sth, total_length
+    return sx, sy, sth, length
 
 if __name__ == '__main__':
     # a simple test
@@ -104,7 +104,7 @@ if __name__ == '__main__':
         my_sx[j*my_N:(j+1)*my_N] = sx_
         my_sy[j*my_N:(j+1)*my_N] = sy_
         my_sth[j*my_N:(j+1)*my_N] = sth_
-        my_length += length_
+        my_length += length_[-1]
         # my_dth[j*my_N:(j+1)*my_N] = dth_
 
     plt.subplot(1, 2, 1)

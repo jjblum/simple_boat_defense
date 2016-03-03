@@ -14,10 +14,10 @@ SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
 WITH_PLOTTING = True
 GLOBAL_DT = 0.1  # [s]
 TOTAL_TIME = 120  # [s]
-BOAT_COUNT = 20
-ATTACKER_COUNT = 5
-MAX_DEFENDERS_PER_RING = numpy.arange(8.0, 100.0, 2.0)
-RADII_OF_RINGS = numpy.arange(10.0, 600.0, 5.0)
+BOAT_COUNT = 10
+ATTACKER_COUNT = 4
+MAX_DEFENDERS_PER_RING = numpy.arange(10.0, 100.0, 2.0)
+RADII_OF_RINGS = numpy.arange(4.0, 600.0, 4.0)
 ATTACKER_REMOVAL_DISTANCE = 1.0
 ASSET_REMOVAL_DISTANCE = 1.0
 
@@ -79,11 +79,17 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
     asset_arrows = [pylab.arrow(assets_x[j], assets_y[j],
                     0.05*math.cos(assets_th[j]),
                     0.05*math.sin(assets_th[j]),
-                    fc="b", ec="b", head_width=0.5, head_length=1.0) for j in range(len(assets_x))]
+                    fc="b", ec="b", head_width=1.5, head_length=2.5) for j in range(len(assets_x))]
 
-    for boat in defenders:
+    for boat in assets + defenders + attackers:
         if boat.plotData is not None:
-            ax.draw_artist(ax.plot(boat.plotData[:, 0], boat.plotData[:, 1], 'k-', linewidth=0.1)[0])
+            if boat.type == "asset":
+                style = 'b-'
+            elif boat.type == "defender":
+                style = 'g-'
+            elif boat.type == "attacker":
+                style = 'r-'
+            ax.draw_artist(ax.plot(boat.plotData[:, 0], boat.plotData[:, 1], style, linewidth=0.1)[0])
 
     # plt.title(title_string + " time = {tt} s".format(tt=plot_time))
     # rectangle coords
@@ -142,7 +148,7 @@ def formDefenderRings(defenders):
 def randomAttackers(attackers):
     # attackers always start at some uniform random polar location, fixed radius 30
     for b in attackers:
-        radius = 30.0
+        radius = 40.0
         angle = numpy.random.uniform(0.0, 2*math.pi, 2)
         x = radius*math.cos(angle[0])
         y = radius*math.sin(angle[0])
@@ -166,17 +172,26 @@ def initialPositions(assets, defenders, attackers, type="static_ring"):
 def initialStrategy(assets, defenders, attackers, type="static_ring"):
     if type == "static_ring":
         for b in boat_list:
-            # asset does nothing
+            if b.type == "asset":
+                None # asset does nothing
+                # b.strategy = Strategies.SingleSpline(b, [-5.0, 10.0], math.pi, surgeVelocity=0.5)
+                # b.strategy = Strategies.SingleSpline(b, [10.0, 0.0], 0, surgeVelocity=1.5)
+                # b.strategy = Strategies.Square(b, 1.0, 0.0, 10.0)
             if b.type == "defender":
                 b.strategy = Strategies.MoveToClosestAttacker(b)
-            else:
+                None
+            elif b.type == "attacker":
                 b.strategy = Strategies.MoveTowardAsset(b, 1.0)
+                None
     elif type == "convoy":
         for b in boat_list:
             if b.type == "asset":
                 b.strategy = Strategies.HoldHeading(b, 1.0)
             elif b.type == "defender":
-                b.strategy = Strategies.HoldHeading(b, 1.0)
+                if b.uniqueID % 2:
+                    b.strategy = Strategies.HoldHeading(b, 1.0)
+                else:
+                    b.strategy = Strategies.MoveToClosestAttacker(b)
             else:
                 b.strategy = Strategies.MoveTowardAsset(b, 1.0)
 
@@ -221,6 +236,7 @@ if __name__ == '__main__':
             b.control()
             states = spi.odeint(Boat.ode, b.state, times, (b,))
             b.state = states[1]
+            #if b.type == "asset": print b.state
         t += dt
         step += 1
 

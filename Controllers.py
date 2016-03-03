@@ -1,12 +1,12 @@
-import numpy
+import numpy as np
 import abc
 import math
-import Boat
-import copy
+
+import Utility
 
 
 def wrapToPi(angle):
-    return (angle + numpy.pi) % (2 * numpy.pi) - numpy.pi
+    return (angle + np.pi) % (2 * np.pi) - np.pi
 
 """
 class ConstantFunction(object):
@@ -151,7 +151,7 @@ class HeadingOnlyPID(Controller):
         error_th_signal = self._headingPID.signal(error_th, self.boat.time)
         self.time = self.boat.time
 
-        momentFraction = numpy.clip(error_th_signal, -1.0, 1.0)
+        momentFraction = np.clip(error_th_signal, -1.0, 1.0)
 
         if math.fabs(error_th) < 1.0*math.pi/180.0 and math.fabs(state[5]) < 0.5*math.pi/180.0:
             self.finished = True
@@ -191,9 +191,9 @@ class SurgeAndHeadingPID(Controller):
 
         self.time = self.boat.time
 
-        momentFraction = numpy.clip(error_th_signal, -1.0, 1.0)
-        # thrustFraction = numpy.clip(error_pos_signal, -1.0, 1.0)
-        thrustFraction = numpy.clip(error_u_signal, -1.0, 1.0)
+        momentFraction = np.clip(error_th_signal, -1.0, 1.0)
+        # thrustFraction = np.clip(error_pos_signal, -1.0, 1.0)
+        thrustFraction = np.clip(error_u_signal, -1.0, 1.0)
 
         return thrustFraction, momentFraction
 
@@ -258,29 +258,30 @@ class PointAndShootPID(Controller):
 
         self.time = self.boat.time
 
-        clippedAngleError = numpy.clip(math.fabs(error_th), 0.0, self._headingErrorSurgeCutoff)
+        clippedAngleError = np.clip(math.fabs(error_th), 0.0, self._headingErrorSurgeCutoff)
         thrustReductionRatio = math.cos(math.pi/2.0*clippedAngleError/self._headingErrorSurgeCutoff)
-        momentFraction = numpy.clip(error_th_signal, -1.0, 1.0)
-        thrustFraction = numpy.clip(error_pos_signal, -thrustReductionRatio, thrustReductionRatio)
+        momentFraction = np.clip(error_th_signal, -1.0, 1.0)
+        thrustFraction = np.clip(error_pos_signal, -thrustReductionRatio, thrustReductionRatio)
 
         return thrustFraction, momentFraction
 
 
 class LineOfSight(Controller):
-    """
-        Integral LOS Control for Path Following of Underactuated Marine Surface Vessels in the
-        Presence of Constant Ocean Currents
-        Borhug et. al 2008
 
-        Ideal boat does not propagate based on time or velocity, it is always some distance ahead.
-        This distance changes as curvature changes.
-        Only heading and surge velocity are controlled.
-    """
-    def __init__(self, boat, surgeVelocity=1.0):
+    def __init__(self, boat):
         super(LineOfSight, self).__init__()
+        self.boat = boat
+        self._headingPID = UniversalPID(boat, 1.0, 0.0, 0.0, boat.time, "heading_PID")
+        self._surgeVelocityPID = UniversalPID(boat, 1.0, 0.1, 1.0, boat.time, "surgeVelocity_PID")
 
     def actuationEffortFractions(self):
-        return
+        # the strategy is the part where the goal angle is calculated, so this should be super simple, just the PID output
+        error_th_signal = self._headingPID.signal(wrapToPi(self.idealState[4] - self.boat.state[4]), self.boat.time)
+        error_u_signal = self._surgeVelocityPID.signal(self.idealState[2] - self.boat.state[2], self.boat.time)
+        momentFraction = np.clip(error_th_signal, -1.0, 1.0)
+        print "momentFraction = {}".format(momentFraction)
+        thrustFraction = np.clip(error_u_signal, -1.0, 1.0)
+        return thrustFraction, momentFraction
 
 
 """
