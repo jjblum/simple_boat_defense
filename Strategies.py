@@ -561,7 +561,7 @@ class SingleSpline(Strategy):
         This distance changes as curvature changes.
         Only heading and surge velocity are controlled.
     """
-    def __init__(self, boat, destination, finalHeading=0.0, surgeVelocity=1.0, positionThreshold=1.0, N=1000):
+    def __init__(self, boat, destination, finalHeading=0.0, surgeVelocity=1.0, positionThreshold=1.0, N=100):
         super(SingleSpline, self).__init__(boat)
         self._destination = destination
         self._surgeVelocity = surgeVelocity
@@ -573,10 +573,12 @@ class SingleSpline(Strategy):
         self._sth = None
         self._totalLength = None
         self._t = boat.time
+        self._u = None
+        self._splineCoeffs = None
         self.generateSpline()
         self._positionThreshold = positionThreshold
         self._sigma = 0.1
-        self._lookAheadLength = 1.0  # want this to change with curvature
+        self._lookAhead = 0.1  # want this to change with curvature
         self._errorAccumulator = 0.0  # initialize the integral action
         self.controller = Controllers.LineOfSight(boat)
 
@@ -587,7 +589,8 @@ class SingleSpline(Strategy):
         y1 = self._destination[1]
         th0 = self.boat.state[4]
         th1 = self._finalHeading
-        self._sx, self._sy, self._sth, self._length = PiazziSpline.piazziSpline(x0, y0, th0, x1, y1, th1, N=self._N)
+        self._sx, self._sy, self._sth, \
+            self._length, self._u, self._splineCoeffs = PiazziSpline.piazziSpline(x0, y0, th0, x1, y1, th1, N=self._N)
         self.boat.plotData = np.column_stack((self._sx, self._sy))
         # print np.c_[self._progress, self._sx, self._sy, self._sth]
 
@@ -595,22 +598,28 @@ class SingleSpline(Strategy):
         dt = self.boat.time - self._t
         self._t = self.boat.time
         # find closest point on the spline
-        s_star, closest, error_y = Utility.closestPointOnSpline2D(self._length, self._sx, self._sy, self.boat.state[0], self.boat.state[1])
-        print "boat y = {}, distance to spline = {}".format(self.boat.state[1], error_y)
-        tangent_th = np.interp(s_star, self._length, self._sth)
+        u_star, closest, error_y = Utility.closestPointOnSpline2D(
+                self._length, self._sx, self._sy, self.boat.state[0], self.boat.state[1], self._u, self._splineCoeffs)
+        tangent_th = np.interp(u_star, self._length, self._sth)
         # we don't just go in straight lines, so find the location that is lookaheadDistance forward on the spline
-        lookaheadState = Utility.splineToEuclidean2D(self._length, self._sx, self._sy, s_star + self._lookAheadLength)
-        #dy = lookaheadState[0] - closest[0]  # normal to path tangent
-        #dx = lookaheadState[1] - closest[1]  # along path tangent
-        #self._errorAccumulator += dt*self._lookAheadLength*error_y/(math.pow(error_y + self._sigma*self._errorAccumulator, 2) + math.pow(self._lookAheadLength, 2))
+        lookaheadState = Utility.splineToEuclidean2D(self._splineCoeffs, min(u_star + self._lookAhead, 1.0))
+        dx_global = lookaheadState[0] - closest[0]
+        dy_global = lookaheadState[1] - closest[1]
+        # transform into the tangent frame (Frenet frame)
+        dx_frenet = dx_global*math.cos(tangent_th) + dy_global*math.sin(tangent_th)
+        dy_frenet = dx_global*math.sin(tangent_th) - dy_global*math.cos(tangent_th)
         self._errorAccumulator = 0.0
+        #self._errorAccumulator += dt*self._lookAheadLength*error_y/(math.pow(error_y + self._sigma*self._errorAccumulator, 2) + math.pow(self._lookAheadLength, 2))
         #self._errorAccumulator += dt*dx*(error_y - dy)/(
-        #    math.pow(error_y + self._sigma*self._errorAccumulator - dy, 2) + math.pow(dx, 2))
+        #   math.pow(error_y + self._sigma*self._errorAccumulator - dy, 2) + math.pow(dx, 2))
 
         state = np.zeros((6,))
-        state[4] = tangent_th - math.atan((error_y + self._sigma*self._errorAccumulator)/self._lookAheadLength)
-        #print "s_star = {}, closest = {}".format(s_star, closest)
-        #state[4] = -math.atan((error_y + self._sigma*self._errorAccumulator - dy)/dx)
+        state[4] = tangent_th + math.atan2(error_y + self._sigma*self._errorAccumulator - dy_frenet, dx_frenet)
+
+        #print "dx = {}, dy = {}, tangent_th = {}, frenet_dx = {}, frenet_dy = {}".format(
+        #        dx_global, dy_global, tangent_th, dx_frenet, dy_frenet)
+
+
         state[2] = self._surgeVelocity
         self.controller.idealState = state
 

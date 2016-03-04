@@ -12,7 +12,7 @@ import Overseer
 
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
 WITH_PLOTTING = True
-GLOBAL_DT = 0.1  # [s]
+GLOBAL_DT = 0.01  # [s]
 TOTAL_TIME = 120  # [s]
 BOAT_COUNT = 10
 ATTACKER_COUNT = 4
@@ -148,7 +148,7 @@ def formDefenderRings(defenders):
 def randomAttackers(attackers):
     # attackers always start at some uniform random polar location, fixed radius 30
     for b in attackers:
-        radius = 40.0
+        radius = 20.0
         angle = numpy.random.uniform(0.0, 2*math.pi, 2)
         x = radius*math.cos(angle[0])
         y = radius*math.sin(angle[0])
@@ -174,14 +174,14 @@ def initialStrategy(assets, defenders, attackers, type="static_ring"):
         for b in boat_list:
             if b.type == "asset":
                 None # asset does nothing
-                # b.strategy = Strategies.SingleSpline(b, [-5.0, 10.0], math.pi, surgeVelocity=0.5)
-                # b.strategy = Strategies.SingleSpline(b, [10.0, 0.0], 0, surgeVelocity=1.5)
+                b.strategy = Strategies.SingleSpline(b, [-5.0, -10.0], math.pi, surgeVelocity=0.5)
+                # b.strategy = Strategies.SingleSpline(b, [100.0, 0.0], 0, surgeVelocity=1.5)
                 # b.strategy = Strategies.Square(b, 1.0, 0.0, 10.0)
             if b.type == "defender":
-                b.strategy = Strategies.MoveToClosestAttacker(b)
+                #b.strategy = Strategies.MoveToClosestAttacker(b)
                 None
             elif b.type == "attacker":
-                b.strategy = Strategies.MoveTowardAsset(b, 1.0)
+                #b.strategy = Strategies.MoveTowardAsset(b, 1.0)
                 None
     elif type == "convoy":
         for b in boat_list:
@@ -236,7 +236,7 @@ if __name__ == '__main__':
             b.control()
             states = spi.odeint(Boat.ode, b.state, times, (b,))
             b.state = states[1]
-            #if b.type == "asset": print b.state
+            if b.type == "asset": print b.state
         t += dt
         step += 1
 

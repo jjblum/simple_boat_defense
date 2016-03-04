@@ -84,7 +84,7 @@ def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, 
     singularities = np.where(np.abs(np.abs(dth) - 0.5) < m.pow(10., -4))
     # erroneous sth jumps from pi/2 or -pi/2 to 0, so correct sth should be approx. equal to erroneous dth
     sth[singularities] = dth[singularities]
-    return sx, sy, sth, length
+    return sx, sy, sth, length, u, ((a0, a1, a2, a3, a4, a5, a6, a7), (b0, b1, b2, b3, b4, b5, b6, b7))
 
 if __name__ == '__main__':
     # a simple test
@@ -100,7 +100,7 @@ if __name__ == '__main__':
     # my_dth = np.empty((spline_count*my_N,))
     l = np.linspace(0.0, 1.0, spline_count*my_N)
     for j in range(spline_count - 1):
-        sx_, sy_, sth_, length_ = piazziSpline(x[j], y[j], th[j], x[j+1], y[j+1], th[j+1], N=my_N)
+        sx_, sy_, sth_, length_, u, coeffs = piazziSpline(x[j], y[j], th[j], x[j+1], y[j+1], th[j+1], N=my_N)
         my_sx[j*my_N:(j+1)*my_N] = sx_
         my_sy[j*my_N:(j+1)*my_N] = sy_
         my_sth[j*my_N:(j+1)*my_N] = sth_

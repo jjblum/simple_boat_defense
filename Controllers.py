@@ -276,10 +276,9 @@ class LineOfSight(Controller):
 
     def actuationEffortFractions(self):
         # the strategy is the part where the goal angle is calculated, so this should be super simple, just the PID output
-        error_th_signal = self._headingPID.signal(wrapToPi(self.idealState[4] - self.boat.state[4]), self.boat.time)
+        error_th_signal = self._headingPID.signal(wrapToPi(self.boat.state[4] - self.idealState[4]), self.boat.time)
         error_u_signal = self._surgeVelocityPID.signal(self.idealState[2] - self.boat.state[2], self.boat.time)
         momentFraction = np.clip(error_th_signal, -1.0, 1.0)
-        print "momentFraction = {}".format(momentFraction)
         thrustFraction = np.clip(error_u_signal, -1.0, 1.0)
         return thrustFraction, momentFraction
 
