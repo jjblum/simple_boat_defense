@@ -12,7 +12,7 @@ import Overseer
 
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
 WITH_PLOTTING = True
-GLOBAL_DT = 0.01  # [s]
+GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
 BOAT_COUNT = 10
 ATTACKER_COUNT = 4
@@ -79,7 +79,7 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
     asset_arrows = [pylab.arrow(assets_x[j], assets_y[j],
                     0.05*math.cos(assets_th[j]),
                     0.05*math.sin(assets_th[j]),
-                    fc="b", ec="b", head_width=1.5, head_length=2.5) for j in range(len(assets_x))]
+                    fc="b", ec="b", head_width=0.5, head_length=1.0) for j in range(len(assets_x))]
 
     for boat in assets + defenders + attackers:
         if boat.plotData is not None:
@@ -174,8 +174,8 @@ def initialStrategy(assets, defenders, attackers, type="static_ring"):
         for b in boat_list:
             if b.type == "asset":
                 None # asset does nothing
-                b.strategy = Strategies.SingleSpline(b, [-5.0, -10.0], math.pi, surgeVelocity=0.5)
-                # b.strategy = Strategies.SingleSpline(b, [100.0, 0.0], 0, surgeVelocity=1.5)
+                b.strategy = Strategies.SingleSpline(b, [numpy.random.uniform(-10., 10.), numpy.random.uniform(-10., 10.)], numpy.random.uniform(-numpy.pi, numpy.pi), surgeVelocity=0.5)
+                #b.strategy = Strategies.SingleSpline(b, [10.0, 10.0], 0, surgeVelocity=1.5)
                 # b.strategy = Strategies.Square(b, 1.0, 0.0, 10.0)
             if b.type == "defender":
                 #b.strategy = Strategies.MoveToClosestAttacker(b)
@@ -236,7 +236,7 @@ if __name__ == '__main__':
             b.control()
             states = spi.odeint(Boat.ode, b.state, times, (b,))
             b.state = states[1]
-            if b.type == "asset": print b.state
+            # if b.type == "asset": print b.state
         t += dt
         step += 1
 

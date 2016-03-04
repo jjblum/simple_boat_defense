@@ -7,7 +7,8 @@ def wrapToPi(angle):
     return (angle + np.pi) % (2 * np.pi) - np.pi
 
 
-def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, eta=[5, 5, 0, 0, 750, 750]):
+# eta=[10., 10., 0., 0., 750., 750.]
+def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, eta=[5., 10., 100., 100., -750., -750.]):
     """
     :param x0: x coordinate, starting point
     :param y0: y coordinate, starting point
@@ -84,10 +85,28 @@ def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, 
     singularities = np.where(np.abs(np.abs(dth) - 0.5) < m.pow(10., -4))
     # erroneous sth jumps from pi/2 or -pi/2 to 0, so correct sth should be approx. equal to erroneous dth
     sth[singularities] = dth[singularities]
-    return sx, sy, sth, length, u, ((a0, a1, a2, a3, a4, a5, a6, a7), (b0, b1, b2, b3, b4, b5, b6, b7))
+    return sx, sy, sth*m.pi, length, u, ((a0, a1, a2, a3, a4, a5, a6, a7), (b0, b1, b2, b3, b4, b5, b6, b7))
 
 if __name__ == '__main__':
+
     # a simple test
+    x = [0, 10.]
+    y = [0., 10.]
+    th = [0., 0.]
+    N = 500
+    my_sx, my_sy, my_sth, length, l, coeffs = piazziSpline(x[0], y[0], th[0], x[1], y[1], th[1], N=N)
+    my_length = length[-1]
+    plt.subplot(1, 2, 1)
+    plt.plot(my_sx, my_sy)
+    plt.axis('equal')
+    plt.title("boat path, total length = {}".format(my_length))
+    plt.subplot(1, 2, 2)
+    plt.plot(l, my_sth*180.0/np.pi)
+    plt.title("boat heading (deg)")
+    plt.show()
+
+    """
+    # a chain test
     x = [0, 5, 0, -5, 0, 5, 0]
     y = [0, 0, 5, 0, -5, 0, 0]
     th = [0, m.pi/2.0, m.pi, -m.pi/2.0, 0, m.pi/2.0, m.pi]
@@ -106,7 +125,6 @@ if __name__ == '__main__':
         my_sth[j*my_N:(j+1)*my_N] = sth_
         my_length += length_[-1]
         # my_dth[j*my_N:(j+1)*my_N] = dth_
-
     plt.subplot(1, 2, 1)
     plt.plot(my_sx, my_sy)
     plt.axis('equal')
@@ -117,4 +135,5 @@ if __name__ == '__main__':
              'r+', markersize=14, markeredgewidth=3)
     plt.title("boat heading (multiples of pi)")
     plt.show()
+    """
 

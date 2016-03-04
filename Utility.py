@@ -1,8 +1,7 @@
 import numpy as np
 import scipy.spatial as spatial
-import scipy.optimize as optimize
 import matplotlib.pyplot as plt
-import time
+import math
 import PiazziSpline
 
 
@@ -140,10 +139,13 @@ def closestPointOnSpline2D(length, sx, sy, x, y, u, spline_coeffs, guess=None):
         newtonCount += 1
         D, dD_du_, dD_du2_ = dD_du(spline_coeffs, u_star, x, y)
         u_star_old = u_star
-        u_star = u_star - dD_du_/dD_du2_
-        if u_star < 0:
-            raise ValueError("u_star went negative")
-            return
+        u_star_change = -dD_du_/dD_du2_
+        if u_star + u_star_change < 0:
+            break
+        u_star = u_star + u_star_change
+        #if u_star < -1.e-8:
+        #    raise ValueError("u_star went negative")
+        #    return
         convergence = np.abs(u_star - u_star_old)
 
     result = splineToEuclidean2D(spline_coeffs, u_star)
@@ -154,19 +156,52 @@ def closestPointOnSpline2D(length, sx, sy, x, y, u, spline_coeffs, guess=None):
 if __name__ == "__main__":
     x = [0, -5.]
     y = [0., 10.]
-    th = [0., 0.]
-    N = 100
+    th = [0., np.pi]
+    N = 500
     sx, sy, sth, length, u, coeffs = PiazziSpline.piazziSpline(x[0], y[0], th[0], x[1], y[1], th[1], N=N)
     plt.plot(sx, sy, 'k-', linewidth=2.0)
-    test_x = -5.5
-    test_y = 9.5
+    test_x = 3.0
+    test_y = 2.0
     u_star, closest, distance = closestPointOnSpline2D(length, sx, sy, test_x, test_y, u, coeffs, guess=None)
-    print closest
+    print "closest X = {:.3f}, {:.3f}".format(closest[0], closest[1])
+
+    # Figure out the LOS controller using this example
+    tangent_th = np.interp(u_star, u, sth)
+    print "tangent th = {:.3f} deg".format(tangent_th*180.0/np.pi)
+    lookAhead = 0.1  # how far forward in u
+    lookaheadState = splineToEuclidean2D(coeffs, max(0.0, min(u_star + lookAhead, 1.0)))
+    print "lookahead X = {:.3f}, {:.3f}".format(lookaheadState[0], lookaheadState[1])
+    dx_global = lookaheadState[0] - closest[0]
+    dy_global = lookaheadState[1] - closest[1]
+    print "dx_global = {:.3f}, dy_global = {:.3f}".format(dx_global, dy_global)
+    dx_frenet = dx_global*math.cos(tangent_th) + dy_global*math.sin(tangent_th)
+    dy_frenet = dx_global*math.sin(tangent_th) - dy_global*math.cos(tangent_th)
+    print "y error = {:.3f}, dx_frenet = {:.3f}, dy_frenet = {:.3f}".format(distance, dx_frenet, dy_frenet)
+
+    # need sign of distance to spline to change
+    # look at sign of cross product to determine "handed-ness"
+    angle_from_closest_to_test = math.atan2(closest[1] - test_y, closest[0] - test_x)
+    print "angle from closest to test = {:.3f} deg".format(angle_from_closest_to_test*180./np.pi)
+    sign_test = np.cross([math.cos(tangent_th), math.sin(tangent_th)], [math.cos(angle_from_closest_to_test), math.sin(angle_from_closest_to_test)])
+    distance *= np.sign(sign_test)
+    print "distance to spline after sign update = {:.3f}".format(distance)
+
+    # resulting triangle
+    relative_angle = math.atan2((distance - dy_frenet), dx_frenet)
+    global_angle = tangent_th + relative_angle
+    print "relative angle = {:.3f} deg, global angle = {:.3f} deg".format(relative_angle*180./np.pi, global_angle*180./np.pi)
+
+    # plot
     plt.plot(test_x, test_y, 'r+', markersize=12., markeredgewidth=2.0)
     plt.plot(closest[0], closest[1], 'gx', markersize=12., markeredgewidth=2.0)
+    plt.plot(lookaheadState[0], lookaheadState[1], 'go', markersize=12., markeredgewidth=2.0)
     result_line = np.array([[test_x, test_y], closest])
+    lookAhead_line = np.array([closest, lookaheadState])
     plt.plot(result_line[:, 0], result_line[:, 1], 'b-')
+    plt.plot(lookAhead_line[:, 0], lookAhead_line[:, 1], 'g-')
+    plt.arrow(closest[0], closest[1], 10.*math.cos(tangent_th), 10.*math.sin(tangent_th), linestyle='dashed')
+    d = math.sqrt(math.pow(lookaheadState[0] - test_x, 2) + math.pow(lookaheadState[1] - test_y, 2))
+    plt.arrow(test_x, test_y, d*math.cos(global_angle), d*math.sin(global_angle), linestyle='dotted')
     plt.axis('equal')
     plt.title("length = {:.2f}, u = {:.4f}, distance = {:.2f}".format(length[-1], u_star, distance))
     plt.show()
-

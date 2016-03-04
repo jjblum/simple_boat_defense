@@ -578,7 +578,7 @@ class SingleSpline(Strategy):
         self.generateSpline()
         self._positionThreshold = positionThreshold
         self._sigma = 0.1
-        self._lookAhead = 0.1  # want this to change with curvature
+        self._lookAhead = 0.05  # want this to change with curvature
         self._errorAccumulator = 0.0  # initialize the integral action
         self.controller = Controllers.LineOfSight(boat)
 
@@ -600,28 +600,35 @@ class SingleSpline(Strategy):
         # find closest point on the spline
         u_star, closest, error_y = Utility.closestPointOnSpline2D(
                 self._length, self._sx, self._sy, self.boat.state[0], self.boat.state[1], self._u, self._splineCoeffs)
-        tangent_th = np.interp(u_star, self._length, self._sth)
+        tangent_th = np.interp(u_star, self._u, self._sth)
         # we don't just go in straight lines, so find the location that is lookaheadDistance forward on the spline
-        lookaheadState = Utility.splineToEuclidean2D(self._splineCoeffs, min(u_star + self._lookAhead, 1.0))
+        lookaheadState = Utility.splineToEuclidean2D(self._splineCoeffs, max(0.0, min(u_star + self._lookAhead, 1.0)))
+
+        # TODO - just have it use angle to the lookaheadState as the goal
+
         dx_global = lookaheadState[0] - closest[0]
         dy_global = lookaheadState[1] - closest[1]
         # transform into the tangent frame (Frenet frame)
         dx_frenet = dx_global*math.cos(tangent_th) + dy_global*math.sin(tangent_th)
         dy_frenet = dx_global*math.sin(tangent_th) - dy_global*math.cos(tangent_th)
+        # need sign of distance to spline to change
+        # look at sign of cross product to determine "handed-ness"
+        angle_from_closest_to_boat = math.atan2(closest[1] - self.boat.state[1], closest[0] - self.boat.state[0])
+        sign_test = np.cross([math.cos(tangent_th), math.sin(tangent_th)], [math.cos(angle_from_closest_to_boat), math.sin(angle_from_closest_to_boat)])
+        error_y *= np.sign(sign_test)
+
         self._errorAccumulator = 0.0
         #self._errorAccumulator += dt*self._lookAheadLength*error_y/(math.pow(error_y + self._sigma*self._errorAccumulator, 2) + math.pow(self._lookAheadLength, 2))
         #self._errorAccumulator += dt*dx*(error_y - dy)/(
         #   math.pow(error_y + self._sigma*self._errorAccumulator - dy, 2) + math.pow(dx, 2))
-
         state = np.zeros((6,))
-        state[4] = tangent_th + math.atan2(error_y + self._sigma*self._errorAccumulator - dy_frenet, dx_frenet)
-
-        #print "dx = {}, dy = {}, tangent_th = {}, frenet_dx = {}, frenet_dy = {}".format(
-        #        dx_global, dy_global, tangent_th, dx_frenet, dy_frenet)
-
-
+        relative_angle = math.atan2((error_y - dy_frenet), dx_frenet)
+        global_angle = tangent_th + relative_angle
+        state[4] = global_angle
         state[2] = self._surgeVelocity
         self.controller.idealState = state
+        print "dx = {:.2f}, dy = {:.2f}, tangent_th (deg)= {:.2f}, frenet_dx = {:.2f}, frenet_dy = {:.2f}, error_y = {:.2f}, desired th (deg) = {:.2f}".format(
+                dx_global, dy_global, tangent_th*180.0/np.pi, dx_frenet, dy_frenet, error_y, state[4]*180./np.pi)
 
 
 """

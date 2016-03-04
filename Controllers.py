@@ -271,15 +271,20 @@ class LineOfSight(Controller):
     def __init__(self, boat):
         super(LineOfSight, self).__init__()
         self.boat = boat
-        self._headingPID = UniversalPID(boat, 1.0, 0.0, 0.0, boat.time, "heading_PID")
-        self._surgeVelocityPID = UniversalPID(boat, 1.0, 0.1, 1.0, boat.time, "surgeVelocity_PID")
+        self._headingPID = UniversalPID(boat, 10.0, 0.0, 0.0, boat.time, "heading_PID")
+        self._surgeVelocityPID = UniversalPID(boat, 1.0, 0.1, 0.1, boat.time, "surgeVelocity_PID")
+        self._headingErrorSurgeCutoff = 45.0*math.pi/180.0  # thrust signal rolls off as a cosine, hitting zero here
 
     def actuationEffortFractions(self):
         # the strategy is the part where the goal angle is calculated, so this should be super simple, just the PID output
-        error_th_signal = self._headingPID.signal(wrapToPi(self.boat.state[4] - self.idealState[4]), self.boat.time)
+        error_th = wrapToPi(self.boat.state[4] - self.idealState[4])
+        clippedAngleError = np.clip(math.fabs(error_th), 0.0, self._headingErrorSurgeCutoff)
+        thrustReductionRatio = math.cos(math.pi/2.0*clippedAngleError/self._headingErrorSurgeCutoff)
+        error_th_signal = self._headingPID.signal(error_th, self.boat.time)
         error_u_signal = self._surgeVelocityPID.signal(self.idealState[2] - self.boat.state[2], self.boat.time)
         momentFraction = np.clip(error_th_signal, -1.0, 1.0)
-        thrustFraction = np.clip(error_u_signal, -1.0, 1.0)
+        thrustFraction = thrustReductionRatio*np.clip(error_u_signal, -1.0, 1.0)
+        #print "thrustFraction = {}  momentFraction = {}".format(thrustFraction, momentFraction)
         return thrustFraction, momentFraction
 
 
