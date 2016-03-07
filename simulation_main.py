@@ -1,7 +1,9 @@
-import numpy
+import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import scipy.integrate as spi
 import scipy.spatial as spatial
+import multiprocessing as mp
 import pylab
 import math
 import time
@@ -9,6 +11,7 @@ import time
 import Boat
 import Strategies
 import Overseer
+import Metrics
 
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
 WITH_PLOTTING = True
@@ -16,8 +19,8 @@ GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
 BOAT_COUNT = 10
 ATTACKER_COUNT = 4
-MAX_DEFENDERS_PER_RING = numpy.arange(10.0, 100.0, 2.0)
-RADII_OF_RINGS = numpy.arange(4.0, 600.0, 4.0)
+MAX_DEFENDERS_PER_RING = np.arange(10.0, 100.0, 2.0)
+RADII_OF_RINGS = np.arange(4.0, 600.0, 4.0)
 ATTACKER_REMOVAL_DISTANCE = 1.0
 ASSET_REMOVAL_DISTANCE = 1.0
 
@@ -25,22 +28,24 @@ if WITH_PLOTTING:
     figx = 20.0
     figy = 10.0
     fig = plt.figure(figsize=(figx, figy))
-    # ax = fig.add_subplot(111)
-    ax = fig.add_axes([0.01, 0.01, 0.95*figy/figx, 0.95])
-    ax.elev = 10
-    ax.grid(b=False)  # no grid b/c it won't update correctly
-    ax.set_xticks([])  # turn off axis labels b/c they wont update correctly
-    ax.set_yticks([])  # turn off axis labels b/c they wont update correctly
+    ax_metric = fig.add_axes([figy/figx, 0.08, 0.5, 0.8], projection='polar')
+    ax_main = fig.add_axes([0.01, 0.01, 0.95*figy/figx, 0.95])  # main ax must come last for arrows to appear on it!!!
+    ax_main.elev = 10
+    ax_main.grid(b=False)  # no grid b/c it won't update correctly
+    ax_metric.grid(b=True)
+    ax_main.set_xticks([])  # turn off axis labels b/c they wont update correctly
+    ax_main.set_yticks([])  # turn off axis labels b/c they wont update correctly
     defenders_arrows = None
     attackers_arrows = None
     assets_arrows = None
     plt.ioff()
     fig.show()
-    background = fig.canvas.copy_from_bbox(ax.bbox)  # must be below fig.show()!
+    background_metric = fig.canvas.copy_from_bbox(ax_metric.bbox)
+    background_main = fig.canvas.copy_from_bbox(ax_main.bbox)  # must be below fig.show()!
     fig.canvas.draw()
 
 
-def plotSystem(assets, defenders, attackers, title_string, plot_time):
+def plotSystem(assets, defenders, attackers, defenseMetric, title_string, plot_time, real_time_zero):
     # gather the X and Y locations of all boats
     defenders_x = [boat.state[0] for boat in defenders]
     attackers_x = [boat.state[0] for boat in attackers]
@@ -53,20 +58,30 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
     assets_th = [boat.state[4] for boat in assets]
 
     # find the bounds
-    mean_x = numpy.mean(assets_x)
-    mean_y = numpy.mean(assets_y)
-    relative_x = numpy.asarray(defenders_x + attackers_x + assets_x) - mean_x
-    relative_y = numpy.asarray(defenders_y + attackers_y + assets_y) - mean_y
+    mean_x = np.mean(assets_x)
+    mean_y = np.mean(assets_y)
+    relative_x = np.asarray(defenders_x + attackers_x + assets_x) - mean_x
+    relative_y = np.asarray(defenders_y + attackers_y + assets_y) - mean_y
     x_max = 1.05*max(abs(relative_x))
     y_max = 1.05*max(abs(relative_y))
     square_max = max(max([x_max, y_max]), 5.0)
 
     axes = [mean_x-square_max, mean_x+square_max, mean_y-square_max, mean_y+square_max]
-    plt.plot([mean_x-square_max, mean_x+square_max], [mean_y-square_max, mean_y+square_max],
-             'x', markersize=1, markerfacecolor='white', markeredgecolor='white')
-    plt.axis(axes)  # requires those invisible 4 corner white markers
+    ax_main.plot([mean_x-square_max, mean_x+square_max], [mean_y-square_max, mean_y+square_max],
+                 'x', markersize=1, markerfacecolor='white', markeredgecolor='white')
+    ax_main.axis(axes)  # requires those invisible 4 corner white markers
 
-    fig.canvas.restore_region(background)
+    fig.canvas.restore_region(background_metric)
+    fig.canvas.restore_region(background_main)
+
+    # plot the metric polar plot
+    max_r = np.max(defenseMetric.polarPlotData[:, 1])
+    min_r = np.min(defenseMetric.polarPlotData[:, 1])
+    ax_metric.set_rmax(max_r*2.0)
+    ax_metric.draw_artist(ax_metric.plot(defenseMetric.polarPlotData[:, 0],
+                                         defenseMetric.polarPlotData[:, 1], 'b-', linewidth=4.0)[0])
+    # plot inscribed circle
+    ax_metric.draw_artist(ax_metric.plot(np.linspace(-np.pi, np.pi, 100), min_r*np.ones(100,), 'm-', linewidth=6.0)[0])
 
     defender_arrows = [pylab.arrow(defenders_x[j], defenders_y[j],
                                    0.05*math.cos(defenders_th[j]),
@@ -79,7 +94,7 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
     asset_arrows = [pylab.arrow(assets_x[j], assets_y[j],
                     0.05*math.cos(assets_th[j]),
                     0.05*math.sin(assets_th[j]),
-                    fc="b", ec="b", head_width=0.5, head_length=1.0) for j in range(len(assets_x))]
+                    fc="b", ec="b", head_width=1.5, head_length=2.5) for j in range(len(assets_x))]
 
     for boat in assets + defenders + attackers:
         if boat.plotData is not None:
@@ -89,40 +104,40 @@ def plotSystem(assets, defenders, attackers, title_string, plot_time):
                 style = 'g-'
             elif boat.type == "attacker":
                 style = 'r-'
-            ax.draw_artist(ax.plot(boat.plotData[:, 0], boat.plotData[:, 1], style, linewidth=0.1)[0])
+            ax_main.draw_artist(ax_main.plot(boat.plotData[:, 0], boat.plotData[:, 1], style, linewidth=0.25)[0])
 
-    # plt.title(title_string + " time = {tt} s".format(tt=plot_time))
     # rectangle coords
     left, width = 0.01, 0.95
     bottom, height = 0.0, 0.96
     right = left + width
     top = bottom + height
-    time_text = ax.text(right, top, "time = {:.2f} s".format(plot_time),
-                        horizontalalignment='right', verticalalignment='bottom',
-                        transform=ax.transAxes, size=20)
-    asset_position_text = ax.text(0.5*(left + right), bottom,
-                                  "asset (x,y) = {:.2f},{:.2f}".format(mean_x, mean_y),
-                                  horizontalalignment='center', verticalalignment='bottom',
-                                  transform=ax.transAxes, size=20)
-    title_text = ax.text(left, top, "{s}".format(s=title_string),
-                         horizontalalignment='left', verticalalignment='bottom',
-                         transform=ax.transAxes, size=20)
+    time_text = ax_main.text(right, top, "time = {:.2f} s".format(plot_time),
+                             horizontalalignment='right', verticalalignment='bottom',
+                             transform=ax_main.transAxes, size=20)
+    asset_position_text = ax_main.text(0.5*(left + right), bottom,
+                                       "asset (x,y) = {:.2f},{:.2f}".format(mean_x, mean_y),
+                                       horizontalalignment='center', verticalalignment='bottom',
+                                       transform=ax_main.transAxes, size=20)
+    title_text = ax_main.text(left, top, "{s}".format(s=title_string),
+                              horizontalalignment='left', verticalalignment='bottom',
+                              transform=ax_main.transAxes, size=20)
     real_time_passed = time.time() - real_time_zero
     time_ratio = assets[0].time/real_time_passed
-    time_ratio_text = ax.text(right, top - 0.03, "speed = {:.2f}x".format(time_ratio),
-                              horizontalalignment='right', verticalalignment='bottom',
-                              transform=ax.transAxes, size=20)
-    ax.draw_artist(title_text)
-    ax.draw_artist(asset_position_text)
-    ax.draw_artist(time_text)
-    ax.draw_artist(time_ratio_text)
+    time_ratio_text = ax_main.text(right, top - 0.03, "speed = {:.2f}x".format(time_ratio),
+                                   horizontalalignment='right', verticalalignment='bottom',
+                                   transform=ax_main.transAxes, size=20)
+    ax_main.draw_artist(title_text)
+    ax_main.draw_artist(asset_position_text)
+    ax_main.draw_artist(time_text)
+    ax_main.draw_artist(time_ratio_text)
     for defender_arrow in defender_arrows:
-        ax.draw_artist(defender_arrow)
+        ax_main.draw_artist(defender_arrow)
     for attacker_arrow in attacker_arrows:
-        ax.draw_artist(attacker_arrow)
+        ax_main.draw_artist(attacker_arrow)
     for asset_arrow in asset_arrows:
-        ax.draw_artist(asset_arrow)
-    fig.canvas.blit(ax.bbox)
+        ax_main.draw_artist(asset_arrow)
+    fig.canvas.blit(ax_metric.bbox)
+    fig.canvas.blit(ax_main.bbox)
     # time.sleep(GLOBAL_DT/10)
 
 
@@ -133,7 +148,7 @@ def formDefenderRings(defenders):
         while defender_id < len(defenders):
             defender_count_in_ring = min(len(defenders) - defender_id, MAX_DEFENDERS_PER_RING[ring])
             radius = RADII_OF_RINGS[ring]
-            angles = numpy.arange(0.0, 2*math.pi, 2*math.pi/defender_count_in_ring)
+            angles = np.arange(0.0, 2*math.pi, 2*math.pi/defender_count_in_ring)
             if len(angles) == 0:
                 angles = [0.0]
             for angle in angles:
@@ -149,7 +164,7 @@ def randomAttackers(attackers):
     # attackers always start at some uniform random polar location, fixed radius 30
     for b in attackers:
         radius = 20.0
-        angle = numpy.random.uniform(0.0, 2*math.pi, 2)
+        angle = np.random.uniform(0.0, 2*math.pi, 2)
         x = radius*math.cos(angle[0])
         y = radius*math.sin(angle[0])
         b.state[0] = x
@@ -171,32 +186,31 @@ def initialPositions(assets, defenders, attackers, type="static_ring"):
 
 def initialStrategy(assets, defenders, attackers, type="static_ring"):
     if type == "static_ring":
-        for b in boat_list:
-            if b.type == "asset":
-                None # asset does nothing
-                b.strategy = Strategies.SingleSpline(b, [numpy.random.uniform(-10., 10.), numpy.random.uniform(-10., 10.)], numpy.random.uniform(-numpy.pi, numpy.pi), surgeVelocity=0.5)
-                #b.strategy = Strategies.SingleSpline(b, [10.0, 10.0], 0, surgeVelocity=1.5)
-                # b.strategy = Strategies.Square(b, 1.0, 0.0, 10.0)
-            if b.type == "defender":
-                #b.strategy = Strategies.MoveToClosestAttacker(b)
-                None
-            elif b.type == "attacker":
-                #b.strategy = Strategies.MoveTowardAsset(b, 1.0)
-                None
+        for b in assets:
+            None # asset does nothing
+            b.strategy = Strategies.SingleSpline(b, [np.random.uniform(-20., 20.), np.random.uniform(-20., 20.)], np.random.uniform(-np.pi, np.pi), surgeVelocity=2.5)
+            # b.strategy = Strategies.SingleSpline(b, [10.0, 0.0], 0, surgeVelocity=2.5, driftDown=True)
+            # b.strategy = Strategies.Square(b, 1.0, 0.0, 10.0)
+        for b in defenders:
+            #b.strategy = Strategies.MoveToClosestAttacker(b)
+            # b.strategy = Strategies.DefensiveBlock(b, attackers[np.random.random_integers(0, len(attackers)-1)], assets[0], 0.5)
+            None
+        for b in attackers:
+            #b.strategy = Strategies.MoveTowardAsset(b, 1.0)
+            None
     elif type == "convoy":
-        for b in boat_list:
-            if b.type == "asset":
+        for b in assets:
+            b.strategy = Strategies.HoldHeading(b, 1.0)
+        for b in defenders:
+            if b.uniqueID % 2:
                 b.strategy = Strategies.HoldHeading(b, 1.0)
-            elif b.type == "defender":
-                if b.uniqueID % 2:
-                    b.strategy = Strategies.HoldHeading(b, 1.0)
-                else:
-                    b.strategy = Strategies.MoveToClosestAttacker(b)
             else:
-                b.strategy = Strategies.MoveTowardAsset(b, 1.0)
+                b.strategy = Strategies.MoveToClosestAttacker(b)
+        for b in attackers:
+            b.strategy = Strategies.MoveTowardAsset(b, 1.0)
 
 
-if __name__ == '__main__':
+def main():
     # spawn boats objects
 
     boat_list = [Boat.Boat() for i in range(0, BOAT_COUNT)]
@@ -223,14 +237,37 @@ if __name__ == '__main__':
     initialPositions(assets, defenders, attackers, SIMULATION_TYPE)
     initialStrategy(assets, defenders, attackers, SIMULATION_TYPE)
 
+    # set up defense metric tools
+    if SIMULATION_TYPE == "static_ring":
+        defenseMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=10.*np.pi/180.)
+    elif SIMULATION_TYPE == "convoy":
+        defenseMetric = Metrics.DefenseMetric(assets, defenders, attackers)
+
     # move asset using ODE integration
     real_time_zero = time.time()
     t = 0.0
     dt = GLOBAL_DT
     step = 1
 
+    """
+    t0 = time.time()
+    pool = mp.Pool(processes=min(BOAT_COUNT, 20))
+    pool.map(printUID, boat_list)
+    print "Basic pool.map took {} seconds".format(time.time() - t0)
+
+    t0 = time.time()
+    results = [pool.apply_async(printUID, b) for b in boat_list]
+    print [result.get(timeout=1) for result in results]
+    print "pool.apply_async took {} seconds".format(time.time() - t0)
+
+    t0 = time.time()
+    for b in boat_list:
+        printUID(b)
+    print "Simple loop took {} seconds".format(time.time() - t0)
+    """
+
     while t < TOTAL_TIME:
-        times = numpy.linspace(t, t+dt, 2)
+        times = np.linspace(t, t+dt, 2)
         for b in boat_list:
             b.time = t
             b.control()
@@ -240,11 +277,14 @@ if __name__ == '__main__':
         t += dt
         step += 1
 
+        # update any metrics
+        defenseMetric.measureCurrentState()
+
         if len(attackers) > 0:
             # build location arrays for defenders, attackers, and assets
-            X_defenders = numpy.zeros((len(defenders), 2))
-            X_attackers = numpy.zeros((len(attackers), 2))
-            X_assets = numpy.zeros((len(assets), 2))
+            X_defenders = np.zeros((len(defenders), 2))
+            X_attackers = np.zeros((len(attackers), 2))
+            X_assets = np.zeros((len(assets), 2))
             for j in range(len(defenders)):
                 boat = defenders[j]
                 X_defenders[j, 0] = boat.state[0]
@@ -257,17 +297,16 @@ if __name__ == '__main__':
                 boat = assets[j]
                 X_assets[j, 0] = boat.state[0]
                 X_assets[j, 1] = boat.state[1]
-            # scipy.spatial.distance.cdist
             atk_vs_asset_pairwise_distances = spatial.distance.cdist(X_assets, X_attackers)
             overseer.atk_vs_asset_pairwise_distances = atk_vs_asset_pairwise_distances  # inform the overseer
-            atk_vs_asset_minimum_distance = numpy.min(atk_vs_asset_pairwise_distances, 1)
+            atk_vs_asset_minimum_distance = np.min(atk_vs_asset_pairwise_distances, 1)
             if atk_vs_asset_minimum_distance < ASSET_REMOVAL_DISTANCE:
                 print "Simulation ends: Asset was attacked successfully"
                 break
 
             def_vs_atk_pairwise_distances = spatial.distance.cdist(X_defenders, X_attackers)
             overseer.def_vs_atk_pairwise_distances = def_vs_atk_pairwise_distances  # inform the overseer
-            def_vs_atk_closest_distances = numpy.min(def_vs_atk_pairwise_distances, 0)
+            def_vs_atk_closest_distances = np.min(def_vs_atk_pairwise_distances, 0)
             # if any values are less than the distance threshold, remove the attacker
             attackers_to_be_removed = []
             for d in range(len(def_vs_atk_closest_distances)):
@@ -285,5 +324,7 @@ if __name__ == '__main__':
         #        with respect to the asset in the center
 
         if WITH_PLOTTING:
-            plotSystem(assets, defenders, attackers, "ATTAAAAAACK!!!!", t)
+            plotSystem(assets, defenders, attackers, defenseMetric, "ATTAAAAAACK!!!!", t, real_time_zero)
     print "Finished {} simulated seconds in {} real-time seconds".format(t,  time.time() - real_time_zero)
+
+if __name__ == '__main__': main()

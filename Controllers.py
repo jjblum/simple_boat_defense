@@ -268,14 +268,28 @@ class PointAndShootPID(Controller):
 
 class LineOfSight(Controller):
 
-    def __init__(self, boat):
+    def __init__(self, boat, destination, finalHeading, positionThreshold, driftDown=True):
         super(LineOfSight, self).__init__()
         self.boat = boat
         self._headingPID = UniversalPID(boat, 10.0, 0.0, 0.0, boat.time, "heading_PID")
         self._surgeVelocityPID = UniversalPID(boat, 1.0, 0.1, 0.1, boat.time, "surgeVelocity_PID")
         self._headingErrorSurgeCutoff = 45.0*math.pi/180.0  # thrust signal rolls off as a cosine, hitting zero here
+        self._destination = destination
+        self._finalHeading = finalHeading
+        self._positionThreshold = positionThreshold
+        self._driftDown = driftDown
+        self._remainingDistance = 0.0
+
+    @property
+    def remainingDistance(self):
+        return self._remainingDistance
+
+    @remainingDistance.setter
+    def remainingDistance(self, remainingDistance_in):
+        self._remainingDistance = remainingDistance_in
 
     def actuationEffortFractions(self):
+
         # the strategy is the part where the goal angle is calculated, so this should be super simple, just the PID output
         error_th = wrapToPi(self.boat.state[4] - self.idealState[4])
         clippedAngleError = np.clip(math.fabs(error_th), 0.0, self._headingErrorSurgeCutoff)
@@ -285,6 +299,28 @@ class LineOfSight(Controller):
         momentFraction = np.clip(error_th_signal, -1.0, 1.0)
         thrustFraction = thrustReductionRatio*np.clip(error_u_signal, -1.0, 1.0)
         #print "thrustFraction = {}  momentFraction = {}".format(thrustFraction, momentFraction)
+        # if distance to the goal is less than some threshold
+        distanceToGoal = math.sqrt(math.pow(self._destination[0] - self.boat.state[0], 2) +
+                                   math.pow(self._destination[1] - self.boat.state[1], 2))
+
+        if self.finished:
+            return 0.0, 0.0
+
+        if distanceToGoal < self._positionThreshold:
+            self.finished = True
+            thrustFraction = 0.0
+
+        # if the angle error is low (i.e. pointing at the goal), calculate drag down time with surge velocity
+        # From that, calculate drag down distance
+        # Once position error hits that distance, set thrustFraction to 0
+        if self._driftDown:
+            if error_th < 5.0*math.pi/180.0 and math.fabs(self.boat.state[5]) < 0.5*math.pi/180.0:
+                dragDownTime, dragDownDistance = dragDown(self.boat)
+                if self._remainingDistance < dragDownDistance:
+                    #print "distance = {}, dragDownDistance = {}, DRAG DOWN... u = {}" \
+                    #    .format(error_pos, dragDownDistance, self.boat.state[2])
+                    thrustFraction = 0.0
+
         return thrustFraction, momentFraction
 
 

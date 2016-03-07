@@ -18,6 +18,8 @@ class Design(object):
         self._momentOfInertia = 0.0  # [kg/m^2]
         self._dragAreas = [0.0, 0.0, 0.0]  # surge, sway, rotation [m^2]
         self._dragCoeffs = [0.0, 0.0, 0.0]  # surge, sway, rotation [-]
+        self._maxSpeed = 0.0
+        self._minSpeed = 0.0
 
     @abc.abstractmethod
     def thrustAndMomentFromFractions(self, thrustFraction, momentFraction):
@@ -48,12 +50,22 @@ class Design(object):
     def dragCoeffs(self):
         return self._dragCoeffs
 
+    @property
+    def maxSpeed(self):
+        return self._maxSpeed
+
+    @property
+    def minSpeed(self):
+        return self._minSpeed
+
 
 class Lutra(Design):
     def __init__(self):
         super(Lutra, self).__init__()
         self._mass = 5.7833  # [kg]
         self._momentOfInertia = 0.6  # [kg/m^2]
+        self._maxSpeed = 2.5  # [m/s]
+        self._minSpeed = 0.5  # [m/s]
         self._dragAreas = [0.0108589939, 0.0424551192, 0.0424551192]  # surge, sway, rotation [m^2]
         # self._dragCoeffs = [0.258717640651218, 1.088145891415693, 0.048292066650533]  # surge, sway, rotation [-]
         self._dragCoeffs = [1.5, 1.088145891415693, 2.0]  # surge, sway, rotation [-]

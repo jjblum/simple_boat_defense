@@ -8,7 +8,7 @@ def wrapToPi(angle):
 
 
 # eta=[10., 10., 0., 0., 750., 750.]
-def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, eta=[5., 10., 100., 100., -750., -750.]):
+def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, eta=[10., 10., 0., 0., 700., 700.]):
     """
     :param x0: x coordinate, starting point
     :param y0: y coordinate, starting point

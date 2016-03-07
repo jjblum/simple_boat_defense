@@ -561,7 +561,7 @@ class SingleSpline(Strategy):
         This distance changes as curvature changes.
         Only heading and surge velocity are controlled.
     """
-    def __init__(self, boat, destination, finalHeading=0.0, surgeVelocity=1.0, positionThreshold=1.0, N=100):
+    def __init__(self, boat, destination, finalHeading=0.0, surgeVelocity=1.0, positionThreshold=1.0, N=100, driftDown=True):
         super(SingleSpline, self).__init__(boat)
         self._destination = destination
         self._surgeVelocity = surgeVelocity
@@ -580,7 +580,8 @@ class SingleSpline(Strategy):
         self._sigma = 0.1
         self._lookAhead = 0.05  # want this to change with curvature
         self._errorAccumulator = 0.0  # initialize the integral action
-        self.controller = Controllers.LineOfSight(boat)
+        self._headingErrorSurgeCutoff = 45.0*math.pi/180.0  # thrust signal rolls off as a cosine, hitting zero here
+        self.controller = Controllers.LineOfSight(boat, destination, finalHeading, positionThreshold, driftDown)
 
     def generateSpline(self):
         x0 = self.boat.state[0]
@@ -592,6 +593,7 @@ class SingleSpline(Strategy):
         self._sx, self._sy, self._sth, \
             self._length, self._u, self._splineCoeffs = PiazziSpline.piazziSpline(x0, y0, th0, x1, y1, th1, N=self._N)
         self.boat.plotData = np.column_stack((self._sx, self._sy))
+        self._totalLength = self._length[-1]
         # print np.c_[self._progress, self._sx, self._sy, self._sth]
 
     def idealState(self):
@@ -602,17 +604,14 @@ class SingleSpline(Strategy):
                 self._length, self._sx, self._sy, self.boat.state[0], self.boat.state[1], self._u, self._splineCoeffs)
         tangent_th = np.interp(u_star, self._u, self._sth)
         # we don't just go in straight lines, so find the location that is lookaheadDistance forward on the spline
-        lookaheadState = Utility.splineToEuclidean2D(self._splineCoeffs, max(0.0, min(u_star + self._lookAhead, 1.0)))
-
-        # TODO - just have it use angle to the lookaheadState as the goal
-
+        u_lookahead = max(0.0, min(u_star + self._lookAhead, 1.0))
+        lookaheadState = Utility.splineToEuclidean2D(self._splineCoeffs, u_lookahead)
         dx_global = lookaheadState[0] - closest[0]
         dy_global = lookaheadState[1] - closest[1]
         # transform into the tangent frame (Frenet frame)
         dx_frenet = dx_global*math.cos(tangent_th) + dy_global*math.sin(tangent_th)
         dy_frenet = dx_global*math.sin(tangent_th) - dy_global*math.cos(tangent_th)
-        # need sign of distance to spline to change
-        # look at sign of cross product to determine "handed-ness"
+        # need sign of distance to spline to change - look at sign of cross product to determine "handed-ness"
         angle_from_closest_to_boat = math.atan2(closest[1] - self.boat.state[1], closest[0] - self.boat.state[0])
         sign_test = np.cross([math.cos(tangent_th), math.sin(tangent_th)], [math.cos(angle_from_closest_to_boat), math.sin(angle_from_closest_to_boat)])
         error_y *= np.sign(sign_test)
@@ -625,10 +624,19 @@ class SingleSpline(Strategy):
         relative_angle = math.atan2((error_y - dy_frenet), dx_frenet)
         global_angle = tangent_th + relative_angle
         state[4] = global_angle
-        state[2] = self._surgeVelocity
+
+        th_lookahead = max(0.0, min(u_star + (1 + 0.5*self._surgeVelocity/self.boat.design.minSpeed)*self._lookAhead, 1.0))
+        lookahead_th = np.interp(th_lookahead, self._u, self._sth)
+        clipped_lookahead_dth = np.clip(np.abs(lookahead_th - tangent_th), 0.0, self._headingErrorSurgeCutoff)
+        surgeVelocityCap = max(self.boat.design.maxSpeed*math.cos(math.pi/2.0*clipped_lookahead_dth/self._headingErrorSurgeCutoff), self.boat.design.minSpeed)
+        # print "tangent change = {:.2f} deg, surge velocity limited to = {:.2f}".format(clipped_lookahead_dth*180./np.pi, surgeVelocityCap)
+
+        state[2] = min(surgeVelocityCap, self._surgeVelocity)
         self.controller.idealState = state
-        print "dx = {:.2f}, dy = {:.2f}, tangent_th (deg)= {:.2f}, frenet_dx = {:.2f}, frenet_dy = {:.2f}, error_y = {:.2f}, desired th (deg) = {:.2f}".format(
-                dx_global, dy_global, tangent_th*180.0/np.pi, dx_frenet, dy_frenet, error_y, state[4]*180./np.pi)
+
+        # remaining distance along spline
+        remainingDistance = self._totalLength - np.interp(u_star, self._u, self._length)
+        self.controller.remainingDistance = remainingDistance
 
 
 """
@@ -693,7 +701,7 @@ class DefensiveLine(Strategy):
 
 
 class DestinationOnlyExecutor(Executor):
-    def __init__(self, boat, destination, positionThreshold):
+    def __init__(self, boat, destination, positionThreshold=1.0):
         super(DestinationOnlyExecutor, self).__init__(boat)
         self._destination = destination
         self._positionThreshold = positionThreshold
@@ -749,3 +757,35 @@ class MoveToClosestAttacker(Strategy):
         ]))
 
 
+# TODO - Executor that decides between a single spline, rotating in place first then a spline, or full point THEN shoot
+
+# TODO - Defensive block: get onto a line of attack
+class DefensiveBlock(Strategy):
+    def __init__(self, boat, attacker, asset, ratioTowardAttacker=0.1):
+        self.boat = boat
+        self._attacker = attacker
+        self._asset = asset
+        self._ratioTowardAttacker = ratioTowardAttacker
+        self._destination = [0.0, 0.0]
+        self._strategy = DestinationOnly(boat, [0.0, 0.0])
+        self._controller = self._strategy.controller
+
+    @property  # need to override the standard controller property with the nested strategy's controller
+    def controller(self):
+        return self._strategy.controller
+
+    @controller.setter  # need to override the standard controller property with the nested strategy's controller
+    def controller(self, controller):
+        self._controller = controller
+
+    def updateFinished(self):  # need to override to get the finished status of the nested strategy!!!
+        self.strategy.updateFinished()
+        self.finished = self.strategy.finished
+
+    def idealState(self):
+        # draw a line between the attacker and the asset
+        dx = self._attacker.state[0] - self._asset.state[0]
+        dy = self._attacker.state[1] - self._asset.state[1]
+        self._strategy.destinationState = [self._asset.state[0] + self._ratioTowardAttacker*dx,
+                                           self._asset.state[1] + self._ratioTowardAttacker*dy]
+        self._strategy.idealState()
