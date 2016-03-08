@@ -78,7 +78,7 @@ def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, 
     dx = np.r_[0.0, np.diff(sx)]
     dy = np.r_[0.0, np.diff(sy)]
     length = np.cumsum(np.sqrt(np.power(dx, 2) + np.power(dy, 2)))
-    sth = np.arctan2(dy, dx)/m.pi  # multiples of pi
+    sth = np.arctan2(dy, dx)/m.pi  # multiples of pi (useful for singularity fixes)
     # need to find singularity jumps and patch them
     dth = np.r_[0.0, np.diff(sth)]
     dth[0] = dth[1];
@@ -87,53 +87,124 @@ def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, 
     sth[singularities] = dth[singularities]
     return sx, sy, sth*m.pi, length, u, ((a0, a1, a2, a3, a4, a5, a6, a7), (b0, b1, b2, b3, b4, b5, b6, b7))
 
-if __name__ == '__main__':
 
+def splineOpenChain(waypoints, ths=None, Ns=None):
+    """
+    :param waypoints: numpy array with 2 columns [x, y] locations of waypoints
+    :param ths: numpy array with 1 column [th] of desired orientations at the waypoints
+                If not used, the tangent to the bisecting angle will be used (i.e. avg of sharp approach and exit)
+    :param Ns: number of points in each part of the segment
+               If not used, 100 will be used for all segments
+    :return: a concatenation of the splines, with coeffs being a list of (a,b) coefficient tuples
+    """
+    wp_count = waypoints.shape[0]
+    spline_count = wp_count - 1
+    if ths is None:
+        # TODO - calculate bisecting angle tangents (avg of sharp approach and exit angles)
+        dX = np.diff(waypoints, axis=0)  # calculate sharp angles
+    if Ns is None:
+        Ns = 100.*np.ones((spline_count,))
+    sx = np.zeros((sum(Ns),))
+    sy = np.zeros((sum(Ns),))
+    sth = np.zeros((sum(Ns),))
+    length = np.zeros((sum(Ns),))
+    u = np.linspace(0.0, 1.0, sum(Ns))
+    coeffs = list()
+    for j in range(spline_count):
+        sx_, sy_, sth_, length_, u_, coeffs_ = piazziSpline(
+                waypoints[j, 0], waypoints[j, 1], ths[j],
+                waypoints[j+1, 0], waypoints[j+1, 1], ths[j+1], N=Ns[j])
+        if j == 0:
+            start_index = 0
+        else:
+            start_index = sum(Ns[:j])
+        end_index = sum(Ns[:j+1])
+        sx[start_index:end_index] = sx_
+        sy[start_index:end_index] = sy_
+        sth[start_index:end_index] = sth_
+        length[start_index:end_index] = length_
+        if j > 0:
+            length[start_index:end_index] += length[start_index - 1]  # previous lengths add in
+        coeffs.append(coeffs_)
+    return sx, sy, sth, length, u, coeffs
+
+
+# TODO - generate spline in a chain and make a strategy that uses np.mod(u, 1) to get a u that loops on itself
+def splineClosedChain(waypoints, ths=None, Ns=None):
+    waypoints = np.r_[waypoints, np.atleast_2d(waypoints[0, :])]
+    ths = np.r_[ths, ths[0]]
+    return splineOpenChain(waypoints, ths, Ns)
+
+
+def main_single():
     # a simple test
     x = [0, 10.]
     y = [0., 10.]
     th = [0., 0.]
     N = 500
-    my_sx, my_sy, my_sth, length, l, coeffs = piazziSpline(x[0], y[0], th[0], x[1], y[1], th[1], N=N)
-    my_length = length[-1]
+    sx, sy, sth, length, u, coeffs = piazziSpline(x[0], y[0], th[0], x[1], y[1], th[1], N=N)
+    total_length = length[-1]
     plt.subplot(1, 2, 1)
-    plt.plot(my_sx, my_sy)
+    plt.plot(sx, sy)
     plt.axis('equal')
-    plt.title("boat path, total length = {}".format(my_length))
+    plt.title("boat path, total length = {:.2f}".format(total_length))
     plt.subplot(1, 2, 2)
-    plt.plot(l, my_sth*180.0/np.pi)
+    plt.plot(u, sth*180.0/np.pi)
     plt.title("boat heading (deg)")
     plt.show()
 
-    """
-    # a chain test
-    x = [0, 5, 0, -5, 0, 5, 0]
-    y = [0, 0, 5, 0, -5, 0, 0]
-    th = [0, m.pi/2.0, m.pi, -m.pi/2.0, 0, m.pi/2.0, m.pi]
-    spline_count = len(x)
-    my_N = 100
-    my_sx = np.empty((spline_count*my_N,))
-    my_sy = np.empty((spline_count*my_N,))
-    my_sth = np.empty((spline_count*my_N,))
-    my_length = 0.0
-    # my_dth = np.empty((spline_count*my_N,))
-    l = np.linspace(0.0, 1.0, spline_count*my_N)
-    for j in range(spline_count - 1):
-        sx_, sy_, sth_, length_, u, coeffs = piazziSpline(x[j], y[j], th[j], x[j+1], y[j+1], th[j+1], N=my_N)
-        my_sx[j*my_N:(j+1)*my_N] = sx_
-        my_sy[j*my_N:(j+1)*my_N] = sy_
-        my_sth[j*my_N:(j+1)*my_N] = sth_
-        my_length += length_[-1]
-        # my_dth[j*my_N:(j+1)*my_N] = dth_
-    plt.subplot(1, 2, 1)
-    plt.plot(my_sx, my_sy)
-    plt.axis('equal')
-    plt.title("boat path, total length = {}".format(my_length))
-    plt.subplot(1, 2, 2)
-    plt.plot(l, my_sth)
-    plt.plot(np.arange(0., 1., 1./spline_count), my_sth[np.arange(0, spline_count*my_N, my_N)],
-             'r+', markersize=14, markeredgewidth=3)
-    plt.title("boat heading (multiples of pi)")
-    plt.show()
-    """
 
+def main_open_chain():
+    # a chain test
+    x = [10, 0, -10, 0]
+    y = [0, 10, 0, -10]
+    X = np.column_stack((x, y))
+    th = [m.pi/2., m.pi, -m.pi/2., 0.]
+    Ns = np.random.random_integers(100., 200., (X.shape[0]-1,))
+    sx, sy, sth, length, u, coeffs = splineOpenChain(X, th, Ns)
+    endpoint_indices = np.cumsum(Ns)-1
+
+    plt.subplot(1, 2, 1)
+    plt.plot(sx, sy)
+    plt.plot(np.r_[x[0], sx[endpoint_indices]], np.r_[y[0], sy[endpoint_indices]],
+             'r+', markersize=14, markeredgewidth=3)
+    plt.axis('equal')
+    plt.title("boat path, total length = {:.2f}".format(length[-1]))
+    plt.subplot(1, 2, 2)
+    plt.plot(u, sth*180.0/np.pi)
+
+    plt.plot(np.r_[0, u[endpoint_indices]], 180.0/np.pi*np.r_[th[0], sth[endpoint_indices]],
+             'r+', markersize=14, markeredgewidth=3)
+    plt.title("boat heading (deg)")
+    plt.show()
+
+
+def main_closed_chain():
+    # a chain test
+    x = [10, 0, -10, 0]
+    y = [0, 10, 0, -10]
+    X = np.column_stack((x, y))
+    th = [m.pi/2.0, m.pi, -m.pi/2.0, 0]
+    Ns = np.random.random_integers(100., 200., (X.shape[0],))
+    sx, sy, sth, length, u, coeffs = splineClosedChain(X, th, Ns)
+    endpoint_indices = np.cumsum(Ns)-1
+
+    plt.subplot(1, 2, 1)
+    plt.plot(sx, sy)
+    plt.plot(np.r_[x[0], sx[endpoint_indices]], np.r_[y[0], sy[endpoint_indices]],
+             'r+', markersize=14, markeredgewidth=3)
+    plt.axis('equal')
+    plt.title("boat path, total length = {:.2f}".format(length[-1]))
+    plt.subplot(1, 2, 2)
+    plt.plot(u, sth*180.0/np.pi)
+
+    plt.plot(np.r_[0, u[endpoint_indices]], 180.0/np.pi*np.r_[th[0], sth[endpoint_indices]],
+             'r+', markersize=14, markeredgewidth=3)
+    plt.title("boat heading (deg)")
+    plt.show()
+
+
+if __name__ == '__main__':
+    main_single()
+    main_open_chain()
+    main_closed_chain()

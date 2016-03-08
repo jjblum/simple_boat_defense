@@ -25,15 +25,14 @@ class DefenseMetric(object):
         return
 
 
+# TODO - look at intrusion ratio (from that combined path following and obstacle avoidance paper) as a possible metric
 class IntrustionRatio(DefenseMetric):
-
-
-
     def __init__(self, assets, defenders, attackers):
         super(IntrustionRatio, self).__init__(assets, defenders, attackers)
 
     def measureCurrentState(self):
         return
+
 
 class StaticRingMinimumTimeToArrive(DefenseMetric):
     """
@@ -58,6 +57,7 @@ class StaticRingMinimumTimeToArrive(DefenseMetric):
         radii = np.arange(0.0, max_r + 0.001, resolution_r)
         self._ths = np.arange(-np.pi, np.pi + 0.001, resolution_th)
         R, TH = np.meshgrid(radii, self._ths)
+        # note: self._ths == TH[:, 0]
         self._polarGrid = np.column_stack((np.ravel(R), np.ravel(TH)))  # used for plotting
         self._baseCartesianGrid = np.column_stack((np.multiply(self._polarGrid[:, 0], np.cos(self._polarGrid[:, 1])),
                                                    np.multiply(self._polarGrid[:, 0], np.sin(self._polarGrid[:, 1]))))
@@ -67,11 +67,33 @@ class StaticRingMinimumTimeToArrive(DefenseMetric):
 
     def measureCurrentState(self):
         self.cartesianGridUpdate(self._assets[0])
-        for b in self._defenders:
+        ND = len(self._defenders)
+
+        # time to accelerate to 90% top SPEED in a straight line
+        u0 = np.zeros((ND,))
+        u1 = np.zeros((ND,))
+        numCoef = np.zeros((ND,))
+        denCoef = np.zeros((ND,))
+        for i in range(ND):
             None
-            # time to accelerate to top SPEED in a straight line
-            # time to travel around a circle to face goal
-            # time to travel at top speed, leaving circle on tangent and reach the goal
+            b = self._defenders[i]
+            F = b.design.maxForwardThrust
+            a = b.design.dragAreas[0]
+            c = b.design.dragCoeffs[0]
+            m = b.design.mass
+            rho = 1000.0  # density of water [kg/m^3]
+            numCoef[i] = np.sqrt((a*c*rho)/(2.*F))
+            denCoef[i] = np.sqrt((F*a*c*rho)/2.)
+            u0[i] = b.state[2]
+            u1[i] = 0.90*b.design.maxSpeed
+        timeToMaxSpeed = m/denCoef*(np.arctanh(numCoef*u1) - np.arctanh(numCoef*u0))
+
+        # time to travel around a circle to face goal (radius proportional to initial speed)
+        #R = b.design.minTurnRadius(u0)
+
+        # time to travel at top speed, leaving circle on tangent and reach the goal
+        #D =
+
         self.polarPlotData[:, 1] += np.random.normal(0.0, 0.005, size=self._ths.shape)
 
     def minTimeToArriveContour(self, t):

@@ -13,7 +13,7 @@ import Strategies
 import Overseer
 import Metrics
 
-SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
+SIMULATION_TYPE = "convoy"  # "static_ring", "convoy"
 WITH_PLOTTING = True
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
@@ -77,11 +77,14 @@ def plotSystem(assets, defenders, attackers, defenseMetric, title_string, plot_t
     # plot the metric polar plot
     max_r = np.max(defenseMetric.polarPlotData[:, 1])
     min_r = np.min(defenseMetric.polarPlotData[:, 1])
+    avg_r = np.mean(defenseMetric.polarPlotData[:, 1])
     ax_metric.set_rmax(max_r*2.0)
     ax_metric.draw_artist(ax_metric.plot(defenseMetric.polarPlotData[:, 0],
                                          defenseMetric.polarPlotData[:, 1], 'b-', linewidth=4.0)[0])
     # plot inscribed circle
     ax_metric.draw_artist(ax_metric.plot(np.linspace(-np.pi, np.pi, 100), min_r*np.ones(100,), 'm-', linewidth=6.0)[0])
+    # plot mean circle
+    ax_metric.draw_artist(ax_metric.plot(np.linspace(-np.pi, np.pi, 100), avg_r*np.ones(100,), 'c--', linewidth=3.0)[0])
 
     defender_arrows = [pylab.arrow(defenders_x[j], defenders_y[j],
                                    0.05*math.cos(defenders_th[j]),
@@ -200,14 +203,15 @@ def initialStrategy(assets, defenders, attackers, type="static_ring"):
             None
     elif type == "convoy":
         for b in assets:
-            b.strategy = Strategies.HoldHeading(b, 1.0)
+            b.strategy = Strategies.HoldHeading(b, 5.0)
         for b in defenders:
             if b.uniqueID % 2:
                 b.strategy = Strategies.HoldHeading(b, 1.0)
             else:
                 b.strategy = Strategies.MoveToClosestAttacker(b)
         for b in attackers:
-            b.strategy = Strategies.MoveTowardAsset(b, 1.0)
+            None
+            # b.strategy = Strategies.MoveTowardAsset(b, 1.0)
 
 
 def main():
@@ -241,7 +245,8 @@ def main():
     if SIMULATION_TYPE == "static_ring":
         defenseMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=10.*np.pi/180.)
     elif SIMULATION_TYPE == "convoy":
-        defenseMetric = Metrics.DefenseMetric(assets, defenders, attackers)
+        #Metrics.DefenseMetric(assets, defenders, attackers)
+        defenseMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=10.*np.pi/180.)
 
     # move asset using ODE integration
     real_time_zero = time.time()
@@ -273,7 +278,8 @@ def main():
             b.control()
             states = spi.odeint(Boat.ode, b.state, times, (b,))
             b.state = states[1]
-            # if b.type == "asset": print b.state
+            if b.type == "asset":
+                print "t = {:.2f}, u = {:.3f}".format(t, b.state[2])
         t += dt
         step += 1
 
