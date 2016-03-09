@@ -13,7 +13,7 @@ import Strategies
 import Overseer
 import Metrics
 
-SIMULATION_TYPE = "convoy"  # "static_ring", "convoy"
+SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
 WITH_PLOTTING = True
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
@@ -278,8 +278,8 @@ def main():
             b.control()
             states = spi.odeint(Boat.ode, b.state, times, (b,))
             b.state = states[1]
-            if b.type == "asset":
-                print "t = {:.2f}, u = {:.3f}".format(t, b.state[2])
+            #if b.type == "asset":
+            #    print "t = {:.2f}, u = {:.3f}".format(t, b.state[2])
         t += dt
         step += 1
 

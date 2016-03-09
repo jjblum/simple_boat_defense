@@ -7,13 +7,16 @@ import PiazziSpline
 
 def splineToEuclidean2D(spline_coeffs, u):
     """
-    :param spline_coeffs: spline_coeffs: ((a0-a7), (b0-b7))
-    :param u: u = [0, 1] along the spline at which to evaluate the derivative
+    :param spline_coeffs: list of spline coefficients [((a0-a7), (b0-b7)),...]
+    :param u: u = [0, spline_count] along the spline (chain) at which to evaluate the derivative
     :return: (x, y)
     """
-    a = spline_coeffs[0]
-    b = spline_coeffs[1]
-    S = np.power(u, np.arange(0., 8.))
+    if not isinstance(spline_coeffs, list):
+        spline_coeffs = [spline_coeffs]
+    spline_index = max(0, int(u - 1.e-8))
+    a = spline_coeffs[spline_index][0]  # subtract a tiny number to avoid a perfect integer
+    b = spline_coeffs[spline_index][1]
+    S = np.power(u - np.floor(u), np.arange(0., 8.))
     return np.sum(np.array(a)*S), np.sum(np.array(b)*S)
 
 
@@ -34,15 +37,19 @@ def polyInterpOfSplineToEuclidean2D(u_quad, D_quad, u):
 
 def dD_du(spline_coeffs, u, x, y):
     """
-    :param spline_coeffs: ((a0-a7), (b0-b7))
+    :param spline_coeffs: list of spline coefficients [((a0-a7), (b0-b7)),...]
     :param u: u = [0, 1] along the spline at which to evaluate the derivative
     :param X: the cartesian point we are evaluating distance to
     :return: (dD_ds, dD_ds2): first derivative of the sq. euclidean distance evaluated at s, 2nd deriv.
     """
-    a = spline_coeffs[0]
-    b = spline_coeffs[1]
+    if not isinstance(spline_coeffs, list):
+        spline_coeffs = [spline_coeffs]
+
+    spline_index = max(0, int(u - 1.e-8))
+    a = spline_coeffs[spline_index][0]
+    b = spline_coeffs[spline_index][1]
     powers = np.arange(0., 8.)
-    S = np.power(u, powers)
+    S = np.power(u - np.floor(u), powers)
     sx = np.sum(np.array(a)*S)
     sy = np.sum(np.array(b)*S)
     D = spatial.distance.sqeuclidean([x, y], [sx, sy])
@@ -57,7 +64,7 @@ def dD_du(spline_coeffs, u, x, y):
     return D, dD_du_x + dD_du_y, dD_du2_x + dD_du2_y
 
 
-def closestPointOnSpline2D(length, sx, sy, x, y, u, spline_coeffs, guess=None):
+def closestPointOnSpline2D(length, sx, sy, x, y, u, coeffs, guess=None):
     """
     Robust and Efficient Computation of the Closest Point on a Spline Curve
     Wang et. al.
@@ -76,11 +83,12 @@ def closestPointOnSpline2D(length, sx, sy, x, y, u, spline_coeffs, guess=None):
     """
     N = len(sx)
     min_guess_halfwidth = np.floor(N/20.0)
-    total_length = length[-1]
     u_quad = np.zeros((4,))
     D_quad = np.zeros((3,))
     P_quad = np.zeros((4,))
     X = np.atleast_2d(np.array([x, y]))
+    if not isinstance(coeffs, list):
+        coeffs = [coeffs]
 
     # TODO - address the situation where guess is not None
     if guess is None:
@@ -116,8 +124,7 @@ def closestPointOnSpline2D(length, sx, sy, x, y, u, spline_coeffs, guess=None):
                 u_ij[i, j] = u_quad[i] - u_quad[j]
                 y_ij[i, j] = np.power(u_quad[i], 2) - np.power(u_quad[j], 2)
         for q in range(3):
-            D_quad[q] = spatial.distance.sqeuclidean(
-                    X, np.atleast_2d(splineToEuclidean2D(spline_coeffs, u_quad[q])))
+            D_quad[q] = spatial.distance.sqeuclidean(X, np.atleast_2d(splineToEuclidean2D(coeffs, u_quad[q])))
         u_quad[3] = 0.5*(y_ij[1, 2]*D_quad[0] + y_ij[2, 0]*D_quad[1] + y_ij[0, 1]*D_quad[2]) / \
                         (u_ij[1, 2]*D_quad[0] + u_ij[2, 0]*D_quad[1] + u_ij[0, 1]*D_quad[2])
         for p in range(4):
@@ -125,11 +132,13 @@ def closestPointOnSpline2D(length, sx, sy, x, y, u, spline_coeffs, guess=None):
         # first, sort based on P value so u_quad[1:3] has the 3 lowest P values
         # then, resort u_quad[0:3] so that the s values are in increasing order
         u_quad[0:3] = np.sort(u_quad[np.argsort(P_quad)[0:3]])
+
     u_star = 0.5*(y_ij[1, 2]*D_quad[0] + y_ij[2, 0]*D_quad[1] + y_ij[0, 1]*D_quad[2]) / \
                  (u_ij[1, 2]*D_quad[0] + u_ij[2, 0]*D_quad[1] + u_ij[0, 1]*D_quad[2])
 
-    if np.isnan(u_star):
-        u_star = length[closest]
+    if np.isnan(u_star) or u_star > u[-1]:
+        S = np.array([sx[-1], sy[-1]])
+        return u[-1], S, spatial.distance.euclidean(X, S)
 
     # ## NEWTONS PHASE - until convergence
     # TODO - do we even need this phase? We don't need ridiculous precision
@@ -137,23 +146,20 @@ def closestPointOnSpline2D(length, sx, sy, x, y, u, spline_coeffs, guess=None):
     newtonCount = 0
     while convergence > 1.0e-8 and newtonCount < 100:
         newtonCount += 1
-        D, dD_du_, dD_du2_ = dD_du(spline_coeffs, u_star, x, y)
+        D, dD_du_, dD_du2_ = dD_du(coeffs, u_star, x, y)
         u_star_old = u_star
         u_star_change = -dD_du_/dD_du2_
-        if u_star + u_star_change < 0:
-            break
+        if u_star + u_star_change < 0 or u_star + u_star_change > u[-1]:  # prevent Newton's method explosions
+            signs = [-1, 1]
+            u_star_change = signs[np.random.randint(0, 1)]*np.random.uniform(0.0005, 0.001)
         u_star = u_star + u_star_change
-        #if u_star < -1.e-8:
-        #    raise ValueError("u_star went negative")
-        #    return
         convergence = np.abs(u_star - u_star_old)
 
-    result = splineToEuclidean2D(spline_coeffs, u_star)
-
+    result = splineToEuclidean2D(coeffs, u_star)
     return u_star, result, spatial.distance.euclidean(X, result)
 
 
-if __name__ == "__main__":
+def single_spline_main():
     x = [0, -5.]
     y = [0., 10.]
     th = [0., np.pi]
@@ -205,3 +211,126 @@ if __name__ == "__main__":
     plt.axis('equal')
     plt.title("length = {:.2f}, u = {:.4f}, distance = {:.2f}".format(length[-1], u_star, distance))
     plt.show()
+
+
+
+# TODO - perhaps move all the geometry stuff into a function, because you will use it throughout the LOS controller
+def open_spline_chain_main():
+    x = [10, 0, -10, 0]
+    y = [0, 10, 0, -10]
+    X = np.column_stack((x, y))
+    th = [np.pi/2., np.pi, -np.pi/2., 0.]
+    # Random desired discretization along the splines for demonstration purposes
+    Ns = np.random.random_integers(100., 200., (X.shape[0]-1,))  # one less spline than waypoints.
+    sx, sy, sth, length, u, coeffs = PiazziSpline.splineOpenChain(X, th, Ns)
+
+    plt.plot(sx, sy, 'k-', linewidth=2.0)
+    test_x = -5.0
+    test_y = -8.0
+    u_star, closest, distance = closestPointOnSpline2D(length, sx, sy, test_x, test_y, u, coeffs, guess=None)
+    print "closest X = {:.3f}, {:.3f},  u* = {}".format(closest[0], closest[1], u_star)
+
+    # Figure out the LOS controller using this example
+    tangent_th = np.interp(u_star, u, sth)
+    print "tangent th = {:.3f} deg".format(tangent_th*180.0/np.pi)
+    lookAhead = 0.1  # how far forward in u
+    lookaheadState = splineToEuclidean2D(coeffs, min(u_star + lookAhead, u[-1]))
+    print "lookahead X = {:.3f}, {:.3f}".format(lookaheadState[0], lookaheadState[1])
+    dx_global = lookaheadState[0] - closest[0]
+    dy_global = lookaheadState[1] - closest[1]
+    print "dx_global = {:.3f}, dy_global = {:.3f}".format(dx_global, dy_global)
+    dx_frenet = dx_global*math.cos(tangent_th) + dy_global*math.sin(tangent_th)
+    dy_frenet = dx_global*math.sin(tangent_th) - dy_global*math.cos(tangent_th)
+    print "y error = {:.3f}, dx_frenet = {:.3f}, dy_frenet = {:.3f}".format(distance, dx_frenet, dy_frenet)
+
+    # need sign of distance to spline to change
+    # look at sign of cross product to determine "handed-ness"
+    angle_from_closest_to_test = math.atan2(closest[1] - test_y, closest[0] - test_x)
+    print "angle from closest to test = {:.3f} deg".format(angle_from_closest_to_test*180./np.pi)
+    sign_test = np.cross([math.cos(tangent_th), math.sin(tangent_th)], [math.cos(angle_from_closest_to_test), math.sin(angle_from_closest_to_test)])
+    distance *= np.sign(sign_test)
+    print "distance to spline after sign update = {:.3f}".format(distance)
+
+    # resulting triangle
+    relative_angle = math.atan2((distance - dy_frenet), dx_frenet)
+    global_angle = tangent_th + relative_angle
+    print "relative angle = {:.3f} deg, global angle = {:.3f} deg".format(relative_angle*180./np.pi, global_angle*180./np.pi)
+
+    # plot
+    plt.plot(test_x, test_y, 'r+', markersize=12., markeredgewidth=2.0)
+    plt.plot(closest[0], closest[1], 'gx', markersize=12., markeredgewidth=2.0)
+    plt.plot(lookaheadState[0], lookaheadState[1], 'go', markersize=12., markeredgewidth=2.0)
+    result_line = np.array([[test_x, test_y], closest])
+    lookAhead_line = np.array([closest, lookaheadState])
+    plt.plot(result_line[:, 0], result_line[:, 1], 'b-')
+    plt.plot(lookAhead_line[:, 0], lookAhead_line[:, 1], 'g-')
+    plt.arrow(closest[0], closest[1], 10.*math.cos(tangent_th), 10.*math.sin(tangent_th), linestyle='dashed')
+    d = math.sqrt(math.pow(lookaheadState[0] - test_x, 2) + math.pow(lookaheadState[1] - test_y, 2))
+    plt.arrow(test_x, test_y, d*math.cos(global_angle), d*math.sin(global_angle), linestyle='dotted')
+    plt.axis('equal')
+    plt.title("length = {:.2f}, u = {:.4f}, distance = {:.2f}".format(length[-1], u_star, distance))
+    plt.show()
+
+
+def closed_spline_chain_main():
+    # a chain test
+    x = [10, 0, -10, 0]
+    y = [0, 10, 0, -10]
+    X = np.column_stack((x, y))
+    th = [np.pi/2.0, np.pi, -np.pi/2.0, 0]
+    Ns = np.random.random_integers(100., 200., (X.shape[0],))
+    sx, sy, sth, length, u, coeffs = PiazziSpline.splineClosedChain(X, th, Ns)
+
+    plt.plot(sx, sy, 'k-', linewidth=2.0)
+    test_x = -5.0
+    test_y = -8.0
+    u_star, closest, distance = closestPointOnSpline2D(length, sx, sy, test_x, test_y, u, coeffs, guess=None)
+    print "closest X = {:.3f}, {:.3f},  u* = {}".format(closest[0], closest[1], u_star)
+
+    # Figure out the LOS controller using this example
+    tangent_th = np.interp(u_star, u, sth)
+    print "tangent th = {:.3f} deg".format(tangent_th*180.0/np.pi)
+    lookAhead = 0.1  # how far forward in u
+    wrapped_lookahead = np.mod(u_star + lookAhead, u[-1])  # this will make u wrap around the closed spline
+    lookaheadState = splineToEuclidean2D(coeffs, wrapped_lookahead)
+    print "lookahead X = {:.3f}, {:.3f}".format(lookaheadState[0], lookaheadState[1])
+    dx_global = lookaheadState[0] - closest[0]
+    dy_global = lookaheadState[1] - closest[1]
+    print "dx_global = {:.3f}, dy_global = {:.3f}".format(dx_global, dy_global)
+    dx_frenet = dx_global*math.cos(tangent_th) + dy_global*math.sin(tangent_th)
+    dy_frenet = dx_global*math.sin(tangent_th) - dy_global*math.cos(tangent_th)
+    print "y error = {:.3f}, dx_frenet = {:.3f}, dy_frenet = {:.3f}".format(distance, dx_frenet, dy_frenet)
+
+    # need sign of distance to spline to change
+    # look at sign of cross product to determine "handed-ness"
+    angle_from_closest_to_test = math.atan2(closest[1] - test_y, closest[0] - test_x)
+    print "angle from closest to test = {:.3f} deg".format(angle_from_closest_to_test*180./np.pi)
+    sign_test = np.cross([math.cos(tangent_th), math.sin(tangent_th)], [math.cos(angle_from_closest_to_test), math.sin(angle_from_closest_to_test)])
+    distance *= np.sign(sign_test)
+    print "distance to spline after sign update = {:.3f}".format(distance)
+
+    # resulting triangle
+    relative_angle = math.atan2((distance - dy_frenet), dx_frenet)
+    global_angle = tangent_th + relative_angle
+    print "relative angle = {:.3f} deg, global angle = {:.3f} deg".format(relative_angle*180./np.pi, global_angle*180./np.pi)
+
+    # plot
+    plt.plot(test_x, test_y, 'r+', markersize=12., markeredgewidth=2.0)
+    plt.plot(closest[0], closest[1], 'gx', markersize=12., markeredgewidth=2.0)
+    plt.plot(lookaheadState[0], lookaheadState[1], 'go', markersize=12., markeredgewidth=2.0)
+    result_line = np.array([[test_x, test_y], closest])
+    lookAhead_line = np.array([closest, lookaheadState])
+    plt.plot(result_line[:, 0], result_line[:, 1], 'b-')
+    plt.plot(lookAhead_line[:, 0], lookAhead_line[:, 1], 'g-')
+    plt.arrow(closest[0], closest[1], 10.*math.cos(tangent_th), 10.*math.sin(tangent_th), linestyle='dashed')
+    d = math.sqrt(math.pow(lookaheadState[0] - test_x, 2) + math.pow(lookaheadState[1] - test_y, 2))
+    plt.arrow(test_x, test_y, d*math.cos(global_angle), d*math.sin(global_angle), linestyle='dotted')
+    plt.axis('equal')
+    plt.title("length = {:.2f}, u = {:.4f}, distance = {:.2f}".format(length[-1], u_star, distance))
+    plt.show()
+
+
+if __name__ == "__main__":
+    # single_spline_main()
+    # open_spline_chain_main()
+    closed_spline_chain_main()

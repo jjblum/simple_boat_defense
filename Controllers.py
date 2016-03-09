@@ -273,7 +273,7 @@ class LineOfSight(Controller):
         self.boat = boat
         self._headingPID = UniversalPID(boat, 10.0, 0.0, 0.0, boat.time, "heading_PID")
         self._surgeVelocityPID = UniversalPID(boat, 1.0, 0.1, 0.1, boat.time, "surgeVelocity_PID")
-        self._headingErrorSurgeCutoff = 45.0*math.pi/180.0  # thrust signal rolls off as a cosine, hitting zero here
+        self._headingErrorSurgeCutoff = 30.0*math.pi/180.0  # thrust signal rolls off as a cosine, hitting zero here
         self._destination = destination
         self._finalHeading = finalHeading
         self._positionThreshold = positionThreshold
@@ -322,56 +322,3 @@ class LineOfSight(Controller):
                     thrustFraction = 0.0
 
         return thrustFraction, momentFraction
-
-
-"""
-class AicardiPathFollower(Controller):
-    # Aicardi et. al. 2001 "A planar path following controller for underactuated marine vehicles"
-    # Path follower that does not need knowledge of path curvature
-    # Must maintain a nonzero forward velocity and can potentially account for current,
-    #    though that has not been implemented here
-    # "thrustFunction" is a user specified function that controls thrust
-    # Default value is a constant 1.0
-    def __init__(self, boat, alphaGain=1.0, eGain=1.0, ebar=1.0, thrustConstant = 1.0):
-        super(AicardiPathFollower, self).__init__()
-        self._boat = boat
-        self.time = boat.time
-        self._thrustConstant = thrustConstant
-        self._alpha = 0.0
-        self._e = 0.0
-        self._ebar = ebar
-        self._theta = 0.0  # note that this theta is different from boat heading!!!
-        self._eGain = eGain
-        self._alphaGain = alphaGain
-
-    def actuationEffortFractions(self):
-        self.time = self.boat.time  # update time
-        self.update()
-
-        f = self._thrustConstant
-
-        thrustFraction = f*math.cos(self._theta)
-        if self._e != 0:
-            momentFraction = self._alphaGain*self._alpha + 1./self._e*(
-                f*math.cos(self._theta)*math.sin(self._alpha) -
-                self.boat.state[3]*math.cos(self._alpha) -
-                math.sin(self._alpha)*(
-                    f*math.cos(self._alpha) - self._eGain*(self._e - self._ebar)*math.cos(self._theta)
-                )
-            )
-        else:
-            momentFraction = 0.0
-
-        return thrustFraction, momentFraction
-
-    def update(self):
-        # update all the angles according to the geometry used in Aicardi 2001
-        state = self.boat.state
-        idealState = self.idealState
-        dx = idealState[0] - state[0]  # the "e" vector. self._e is its length.
-        dy = idealState[1] - state[1]
-        self._e = math.sqrt(math.pow(dx, 2) + math.pow(dy, 2))
-        e_th = math.atan2(dy, dx)
-        self._theta = e_th - idealState[4]  # difference between angle of error vector and target heading
-        self._alpha = e_th - state[4]  # difference between angle of error and body heading
-"""

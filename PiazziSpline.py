@@ -108,7 +108,8 @@ def splineOpenChain(waypoints, ths=None, Ns=None):
     sy = np.zeros((sum(Ns),))
     sth = np.zeros((sum(Ns),))
     length = np.zeros((sum(Ns),))
-    u = np.linspace(0.0, 1.0, sum(Ns))
+    # u = np.linspace(0.0, 1.0*spline_count, sum(Ns))  # each spline is build from u = [0, 1]
+    u = np.zeros((sum(Ns),))
     coeffs = list()
     for j in range(spline_count):
         sx_, sy_, sth_, length_, u_, coeffs_ = piazziSpline(
@@ -119,12 +120,14 @@ def splineOpenChain(waypoints, ths=None, Ns=None):
         else:
             start_index = sum(Ns[:j])
         end_index = sum(Ns[:j+1])
+        u[start_index:end_index] = u_
         sx[start_index:end_index] = sx_
         sy[start_index:end_index] = sy_
         sth[start_index:end_index] = sth_
         length[start_index:end_index] = length_
         if j > 0:
             length[start_index:end_index] += length[start_index - 1]  # previous lengths add in
+            u[start_index:end_index] += u[start_index - 1]  # previous u add in
         coeffs.append(coeffs_)
     return sx, sy, sth, length, u, coeffs
 
@@ -205,6 +208,6 @@ def main_closed_chain():
 
 
 if __name__ == '__main__':
-    main_single()
+    #main_single()
     main_open_chain()
-    main_closed_chain()
+    #main_closed_chain()
