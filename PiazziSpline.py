@@ -7,8 +7,12 @@ def wrapToPi(angle):
     return (angle + np.pi) % (2 * np.pi) - np.pi
 
 
+def wrapTo2Pi(angle):
+    return (angle + 2*np.pi) % 2.*np.pi
+
+
 # eta=[10., 10., 0., 0., 750., 750.]
-def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, eta=[10., 10., 0., 0., 700., 700.]):
+def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, eta=[5., 5., 0., 0., 700., 700.]):
     """
     :param x0: x coordinate, starting point
     :param y0: y coordinate, starting point
@@ -88,7 +92,7 @@ def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, 
     return sx, sy, sth*m.pi, length, u, ((a0, a1, a2, a3, a4, a5, a6, a7), (b0, b1, b2, b3, b4, b5, b6, b7))
 
 
-def splineOpenChain(waypoints, ths=None, Ns=None):
+def splineOpenChain(waypoints, ths=None, Ns=None, eta=[2., 2., 0., 0., -100., -100.]):
     """
     :param waypoints: numpy array with 2 columns [x, y] locations of waypoints
     :param ths: numpy array with 1 column [th] of desired orientations at the waypoints
@@ -101,7 +105,16 @@ def splineOpenChain(waypoints, ths=None, Ns=None):
     spline_count = wp_count - 1
     if ths is None:
         # TODO - calculate bisecting angle tangents (avg of sharp approach and exit angles)
-        dX = np.diff(waypoints, axis=0)  # calculate sharp angles
+        exit_edges = np.diff(waypoints, axis=0)  # calculate sharp angles
+        entry_edges = np.roll(exit_edges, 1, axis=0)
+        a = np.linalg.norm(exit_edges, axis=1)
+        b = np.linalg.norm(entry_edges, axis=1)
+        c = np.linalg.norm(exit_edges + entry_edges, axis=1)
+        interior_angles = np.arccos((a*a + b*b - c*c)/(2*a*b))
+        exitAngles = np.arctan2(exit_edges[:, 1], exit_edges[:, 0])
+        ths = wrapToPi(exitAngles + 0.5*interior_angles - np.pi/2.)
+        ths = np.r_[ths, exitAngles[-1]]
+
     if Ns is None:
         Ns = 100.*np.ones((spline_count,))
     sx = np.zeros((sum(Ns),))
@@ -114,7 +127,7 @@ def splineOpenChain(waypoints, ths=None, Ns=None):
     for j in range(spline_count):
         sx_, sy_, sth_, length_, u_, coeffs_ = piazziSpline(
                 waypoints[j, 0], waypoints[j, 1], ths[j],
-                waypoints[j+1, 0], waypoints[j+1, 1], ths[j+1], N=Ns[j])
+                waypoints[j+1, 0], waypoints[j+1, 1], ths[j+1], N=Ns[j], eta=eta)
         if j == 0:
             start_index = 0
         else:
@@ -132,11 +145,21 @@ def splineOpenChain(waypoints, ths=None, Ns=None):
     return sx, sy, sth, length, u, coeffs
 
 
-# TODO - generate spline in a chain and make a strategy that uses np.mod(u, 1) to get a u that loops on itself
-def splineClosedChain(waypoints, ths=None, Ns=None):
+def splineClosedChain(waypoints, ths=None, Ns=None, eta=[2., 2., 0., 0., -100., -100.]):
     waypoints = np.r_[waypoints, np.atleast_2d(waypoints[0, :])]
-    ths = np.r_[ths, ths[0]]
-    return splineOpenChain(waypoints, ths, Ns)
+    if ths is not None:
+        ths = np.r_[ths, ths[0]]
+    else:
+        exit_edges = np.diff(waypoints, axis=0)  # calculate sharp angles
+        entry_edges = np.roll(exit_edges, 1, axis=0)
+        a = np.linalg.norm(exit_edges, axis=1)
+        b = np.linalg.norm(entry_edges, axis=1)
+        c = np.linalg.norm(exit_edges + entry_edges, axis=1)
+        interior_angles = np.arccos((a*a + b*b - c*c)/(2*a*b))
+        exitAngles = np.arctan2(exit_edges[:, 1], exit_edges[:, 0])
+        ths = wrapToPi(exitAngles + 0.5*interior_angles - np.pi/2.)
+        ths = np.r_[ths, ths[0]]
+    return splineOpenChain(waypoints, ths, Ns, eta)
 
 
 def main_single():
@@ -207,7 +230,51 @@ def main_closed_chain():
     plt.show()
 
 
+def main_open_chain_default_angles():
+    # a chain test
+    x = [0, 1, -10, -7]
+    y = [0, 10, -1, -3]
+    X = np.column_stack((x, y))
+    Ns = np.random.random_integers(100., 200., (X.shape[0]-1,))
+    sx, sy, sth, length, u, coeffs = splineOpenChain(X, Ns=Ns)
+    endpoint_indices = np.cumsum(Ns)-1
+
+    plt.subplot(1, 2, 1)
+    plt.plot(x, y, 'g--')
+    plt.plot(sx, sy)
+    plt.plot(np.r_[x[0], sx[endpoint_indices]], np.r_[y[0], sy[endpoint_indices]],
+             'r+', markersize=14, markeredgewidth=3)
+    plt.axis('equal')
+    plt.title("boat path, total length = {:.2f}".format(length[-1]))
+    plt.subplot(1, 2, 2)
+    plt.plot(u, sth*180.0/np.pi)
+    plt.show()
+
+
+def main_closed_chain_default_angles():
+    # a chain test
+    x = [0, 1, -10, -7]
+    y = [0, 10, -1, -3]
+    X = np.column_stack((x, y))
+    Ns = np.random.random_integers(100., 200., (X.shape[0],))
+    sx, sy, sth, length, u, coeffs = splineClosedChain(X, Ns=Ns)
+    endpoint_indices = np.cumsum(Ns)-1
+
+    plt.subplot(1, 2, 1)
+    plt.plot(np.r_[x, x[0]], np.r_[y, y[0]], 'g--')
+    plt.plot(sx, sy)
+    plt.plot(np.r_[x[0], sx[endpoint_indices]], np.r_[y[0], sy[endpoint_indices]],
+             'r+', markersize=14, markeredgewidth=3)
+    plt.axis('equal')
+    plt.title("boat path, total length = {:.2f}".format(length[-1]))
+    plt.subplot(1, 2, 2)
+    plt.plot(u, sth*180.0/np.pi)
+    plt.show()
+
+
 if __name__ == '__main__':
-    #main_single()
-    main_open_chain()
-    #main_closed_chain()
+    # main_single()
+    # main_open_chain()
+    # main_closed_chain()
+    # main_open_chain_default_angles()
+    main_closed_chain_default_angles()

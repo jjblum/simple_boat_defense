@@ -95,7 +95,6 @@ def closestPointOnSpline2D(length, sx, sy, x, y, u, coeffs, guess=None):
         # need to do something slower b/c we have no idea where to start
         S = np.column_stack((sx, sy))
         closest = np.argmin(spatial.distance.cdist(S, X))
-        # TODO - if this returns the very first or very last index, just return that directly
         if closest == 0:
             S = np.array([sx[0], sy[0]])
             return 0.0, S, spatial.distance.euclidean(S, X)
@@ -141,7 +140,6 @@ def closestPointOnSpline2D(length, sx, sy, x, y, u, coeffs, guess=None):
         return u[-1], S, spatial.distance.euclidean(X, S)
 
     # ## NEWTONS PHASE - until convergence
-    # TODO - do we even need this phase? We don't need ridiculous precision
     convergence = np.inf
     newtonCount = 0
     while convergence > 1.0e-8 and newtonCount < 100:
@@ -282,15 +280,15 @@ def closed_spline_chain_main():
     sx, sy, sth, length, u, coeffs = PiazziSpline.splineClosedChain(X, th, Ns)
 
     plt.plot(sx, sy, 'k-', linewidth=2.0)
-    test_x = -5.0
-    test_y = -8.0
+    test_x = 11.0
+    test_y = -0.5
     u_star, closest, distance = closestPointOnSpline2D(length, sx, sy, test_x, test_y, u, coeffs, guess=None)
     print "closest X = {:.3f}, {:.3f},  u* = {}".format(closest[0], closest[1], u_star)
 
     # Figure out the LOS controller using this example
     tangent_th = np.interp(u_star, u, sth)
     print "tangent th = {:.3f} deg".format(tangent_th*180.0/np.pi)
-    lookAhead = 0.1  # how far forward in u
+    lookAhead = 0.2  # how far forward in u (remember u goes up to spline_count in a spline chain, not just up to 1)
     wrapped_lookahead = np.mod(u_star + lookAhead, u[-1])  # this will make u wrap around the closed spline
     lookaheadState = splineToEuclidean2D(coeffs, wrapped_lookahead)
     print "lookahead X = {:.3f}, {:.3f}".format(lookaheadState[0], lookaheadState[1])
