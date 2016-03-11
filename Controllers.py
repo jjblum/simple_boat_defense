@@ -224,8 +224,6 @@ class PointAndShootPID(Controller):
 
         error_x = self.idealState[0] - state[0]
         error_y = self.idealState[1] - state[1]
-        #error_u = self.idealState[2] - state[2]
-        #print "surge error = {}".format(error_u)
         error_pos = math.sqrt(math.pow(error_x, 2.0) + math.pow(error_y, 2.0))
 
         # if the position error is less than some threshold and velocity is near zero, turn thrustFraction to 0
@@ -254,7 +252,6 @@ class PointAndShootPID(Controller):
 
         error_th_signal = self._headingPID.signal(error_th, self.boat.time)
         error_pos_signal = self._positionPID.signal(error_pos, self.boat.time)
-        #error_surge_signal = self._surgeVelocityPID.signal(error_u, self.boat.time)
 
         self.time = self.boat.time
 
@@ -268,14 +265,13 @@ class PointAndShootPID(Controller):
 
 class LineOfSight(Controller):
 
-    def __init__(self, boat, destination, finalHeading, positionThreshold, driftDown=True):
+    def __init__(self, boat, destination=None, positionThreshold=1.0, driftDown=True):
         super(LineOfSight, self).__init__()
         self.boat = boat
         self._headingPID = UniversalPID(boat, 10.0, 0.0, 0.0, boat.time, "heading_PID")
         self._surgeVelocityPID = UniversalPID(boat, 1.0, 0.1, 0.1, boat.time, "surgeVelocity_PID")
-        self._headingErrorSurgeCutoff = 30.0*math.pi/180.0  # thrust signal rolls off as a cosine, hitting zero here
+        self._headingErrorSurgeCutoff = 45.0*math.pi/180.0  # thrust signal rolls off as a cosine, hitting zero here
         self._destination = destination
-        self._finalHeading = finalHeading
         self._positionThreshold = positionThreshold
         self._driftDown = driftDown
         self._remainingDistance = 0.0
@@ -299,17 +295,17 @@ class LineOfSight(Controller):
         momentFraction = np.clip(error_th_signal, -1.0, 1.0)
         thrustFraction = thrustReductionRatio*np.clip(error_u_signal, -1.0, 1.0)
         #print "thrustFraction = {}  momentFraction = {}".format(thrustFraction, momentFraction)
-        # if distance to the goal is less than some threshold
-        distanceToGoal = math.sqrt(math.pow(self._destination[0] - self.boat.state[0], 2) +
-                                   math.pow(self._destination[1] - self.boat.state[1], 2))
-
         if self.finished:
             return 0.0, 0.0
+        # if distance to the goal is less than some threshold
+        if self._destination is not None:
+            distanceToGoal = math.sqrt(math.pow(self._destination[0] - self.boat.state[0], 2) +
+                                       math.pow(self._destination[1] - self.boat.state[1], 2))
+            if distanceToGoal < self._positionThreshold:
+                self.finished = True
+                thrustFraction = 0.0
 
-        if distanceToGoal < self._positionThreshold:
-            self.finished = True
-            thrustFraction = 0.0
-
+        """
         # if the angle error is low (i.e. pointing at the goal), calculate drag down time with surge velocity
         # From that, calculate drag down distance
         # Once position error hits that distance, set thrustFraction to 0
@@ -320,5 +316,5 @@ class LineOfSight(Controller):
                     #print "distance = {}, dragDownDistance = {}, DRAG DOWN... u = {}" \
                     #    .format(error_pos, dragDownDistance, self.boat.state[2])
                     thrustFraction = 0.0
-
+        """
         return thrustFraction, momentFraction

@@ -324,6 +324,22 @@ class HoldHeading(Strategy):
         return state
 
 
+# TODO - a spin in place strategy and controller with heading rate control (HeadingOnlyPID but on thdot rather than th)
+class SpinInPlace(Strategy):
+    def __init__(self, boat, direction="cw"):
+        super(SpinInPlace, self).__init__(boat)
+        self._boat = boat
+        self.controller = Controllers.HeadingOnlyPID(boat)
+        self._lookahead = np.deg2rad(15.0)
+        if direction == "cw":
+            self._lookahead *= -1.
+
+    def idealState(self):
+        state = np.zeros((6,))
+        state[4] = self.boat.state[4] + self._lookahead
+        self.controller.idealState = state
+
+
 class DestinationOnly(Strategy):
     # a strategy that only returns the final destination location
     def __init__(self, boat, destination, positionThreshold=1.0, driftDown=True):
@@ -572,7 +588,6 @@ class SingleSpline(Strategy):
         self._sy = None
         self._sth = None
         self._totalLength = None
-        self._t = boat.time
         self._u = None
         self._splineCoeffs = None
         self.generateSpline()
@@ -581,7 +596,7 @@ class SingleSpline(Strategy):
         self._lookAhead = 0.05  # want this to change with curvature
         self._errorAccumulator = 0.0  # initialize the integral action
         self._headingErrorSurgeCutoff = 45.0*math.pi/180.0  # thrust signal rolls off as a cosine, hitting zero here
-        self.controller = Controllers.LineOfSight(boat, destination, finalHeading, positionThreshold, driftDown)
+        self.controller = Controllers.LineOfSight(boat, destination, positionThreshold, driftDown)
 
     def generateSpline(self):
         x0 = self.boat.state[0]
@@ -597,8 +612,6 @@ class SingleSpline(Strategy):
         # print np.c_[self._progress, self._sx, self._sy, self._sth]
 
     def idealState(self):
-        dt = self.boat.time - self._t
-        self._t = self.boat.time
         # find closest point on the spline
         u_star, closest, error_y = Utility.closestPointOnSpline2D(
                 self._length, self._sx, self._sy, self.boat.state[0], self.boat.state[1], self._u, self._splineCoeffs)
@@ -649,7 +662,43 @@ class Weave(Strategy):
 """
 
 
-class Circle(Strategy):
+# TODO - Circle that uses LOS - the lookahead state is always given perfectly by a boat a certain angle ahead of current boat
+class Circle_LOS(Strategy):
+    def __init__(self, boat, center, radius, direction="cw", surgeVelocity=1.0):
+        super(Circle_LOS, self).__init__(boat)
+        self._boat = boat
+        self._center = center
+        self._radius = radius
+        self._surgeVelocity = surgeVelocity
+        self._lookAhead = np.deg2rad(12.0)  # TODO - looks like this needs to be a function of the circle radius!
+        self.controller = Controllers.LineOfSight(boat, driftDown=False)
+        if direction == "cw":
+            self._lookAhead *= -1.
+        ths = np.linspace(-np.pi, np.pi, 100)
+        self.boat.plotData = np.column_stack((center[0] + radius*np.cos(ths), center[1] + radius*np.sin(ths)))
+
+    def idealState(self):
+        # angle of boat with respect to center
+        dX = np.array([self.boat.state[0], self.boat.state[1]]) - np.array(self._center)
+        boatAngle = np.arctan2(dX[1], dX[0])
+        lookaheadAngle = boatAngle + self._lookAhead
+        lookaheadState = np.array([self._center[0] + self._radius*np.cos(lookaheadAngle),
+                                   self._center[1] + self._radius*np.sin(lookaheadAngle)])
+        boatToLookahead = np.array([lookaheadState[0] - self.boat.state[0], lookaheadState[1] - self.boat.state[1]])
+        boatToLookaheadAngle = np.arctan2(boatToLookahead[1], boatToLookahead[0])
+        state = np.zeros((6,))
+        state[2] = self._surgeVelocity
+        state[4] = boatToLookaheadAngle
+        self.controller.idealState = state
+        # print "angle from boat to center = {:.2f} deg".format(np.rad2deg(boatAngle))
+        # print "lookahead angle = {:.2f} deg".format(np.rad2deg(lookaheadAngle))
+        # print "lookahead state = {:.2f},{:.2f}".format(lookaheadState[0], lookaheadState[1])
+        # print "desired global angle = {:.2f} deg".format(np.rad2deg(boatToLookaheadAngle))
+
+
+
+
+class Circle_PID(Strategy):
     """
         Ideal state travels along the perimeter of a circle at a fixed speed
         startingAngle: the location along the circle (in global frame) where the ideal state begins
@@ -657,10 +706,10 @@ class Circle(Strategy):
         theta_dot = speed/R
         A PID will eventually merge with the circle, but it will take some time
     """
-    def __init__(self, boat, center, radius, direction="cw", startingAngle=0.0, speed=2.0):
-        super(Circle, self).__init__(boat)
+    def __init__(self, boat, center, radius, direction="cw", startingAngle=0.0, surgeVelocity=2.0):
+        super(Circle_PID, self).__init__(boat)
         self._startingAngle = startingAngle
-        self._speed = speed
+        self._surgeVelocity = surgeVelocity
         self._direction = direction
         self._R = radius
         self._center = center
@@ -668,12 +717,13 @@ class Circle(Strategy):
         self._t0 = boat.time
         if self._direction == "cw":
             self._th0 = self._startingAngle - math.pi/2.0
-            self._thetaDot = -speed/radius
+            self._thetaDot = -surgeVelocity/radius
         else:  # self._direction == "ccw":
             self._th0 = self._startingAngle + math.pi/2.0
-            self._thetaDot = speed/radius
-        #self.controller = Controllers.AicardiPathFollower(boat)
+            self._thetaDot = surgeVelocity/radius
         self.controller = Controllers.PointAndShootPID(boat, 1.0)
+        ths = np.linspace(-np.pi, np.pi, 100)
+        self.boat.plotData = np.column_stack((center[0] + radius*np.cos(ths), center[1] + radius*np.sin(ths)))
 
     def idealState(self):
         self.time = self.boat.time
@@ -684,20 +734,10 @@ class Circle(Strategy):
             th = Controllers.wrapToPi(self._th0 + totalTime*self._thetaDot)
         x = self._center[0] + self._R*math.cos(self._startingAngle + totalTime*self._thetaDot)
         y = self._center[1] + self._R*math.sin(self._startingAngle + totalTime*self._thetaDot)
-        u = self._speed
+        u = self._surgeVelocity
         w = 0.0
         thdot = self._thetaDot
         self.controller.idealState = np.array([x, y, u, w, th, thdot])
-
-
-"""
-class DefensiveLine(Strategy):
-    def __init__(self, boat, team, lineCenter, lineHeading, gapBetweenDefenders=5.0):
-        super(DefensiveLine, self).__init__(boat)
-        self._team = team
-
-    def angleOfLine
-"""
 
 
 class DestinationOnlyExecutor(Executor):
@@ -789,3 +829,86 @@ class DefensiveBlock(Strategy):
         self._strategy.destinationState = [self._asset.state[0] + self._ratioTowardAttacker*dx,
                                            self._asset.state[1] + self._ratioTowardAttacker*dy]
         self._strategy.idealState()
+
+
+# TODO finish FollowWaypoints
+class FollowWaypoints(Strategy):
+    def __init__(self, boat, waypoints, surgeVelocity=1.0, positionThreshold=1.0):
+        super(FollowWaypoints, self).__init__(boat)
+        self._boat = boat
+        self._waypoints = waypoints
+        self._surgeVelocity = surgeVelocity
+        self._length = None
+        self._sx = None
+        self._sy = None
+        self._sth = None
+        self._totalLength = None
+        self._u = None
+        self._splineCoeffs = None
+        self._totalLength = 0.0
+        self._lookAhead = 0.05
+        self.generateSpline()
+        self._controller = Controllers.LineOfSight(boat, positionThreshold=positionThreshold, driftDown=False)
+        self._headingErrorSurgeCutoff = 45.0*math.pi/180.0  # thrust signal rolls off as a cosine, hitting zero here
+
+    def generateSpline(self):
+        self._sx, self._sy, self._sth, self._length, self._u, self._splineCoeffs = \
+            PiazziSpline.splineOpenChain(self._waypoints)
+        self.boat.plotData = np.column_stack((self._sx, self._sy))
+        self._totalLength = self._length[-1]
+
+    def idealState(self):
+        """
+        state = np.zeros((6,))
+        u_star, global_angle = Utility.LOS_angle(self._length, self._sx, self._sy, self._sth, self._u,
+                                                 self._splineCoeffs, self.boat.state[0], self.boat.state[1])
+        state[4] = global_angle
+        tangent_th = np.interp(u_star, self._u, self._sth)
+        th_lookahead = max(0.0,
+                           min(u_star + (1 + 0.5*self._surgeVelocity/self.boat.design.minSpeed)*self._lookAhead, 1.0))
+        lookahead_th = np.interp(th_lookahead, self._u, self._sth)
+        clipped_lookahead_dth = np.clip(np.abs(lookahead_th - tangent_th), 0.0, self._headingErrorSurgeCutoff)
+        surgeVelocityCap = max(self.boat.design.maxSpeed*math.cos(
+                math.pi/2.0*clipped_lookahead_dth/self._headingErrorSurgeCutoff), self.boat.design.minSpeed)
+
+        state[2] = min(surgeVelocityCap, self._surgeVelocity)
+        self.controller.idealState = state
+        """
+        x = self.boat.state[0]
+        y = self.boat.state[1]
+        u_star, closest, distance = Utility.closestPointOnSpline2D(self._length, self._sx, self._sy, x, y, self._u, self._splineCoeffs)
+        print "boat X = {:.3f}, {:.3f}  closest X = {:.3f}, {:.3f}  u* = {}".format(x, y, closest[0], closest[1], u_star)
+
+        # Figure out the LOS controller using this example
+        tangent_th = np.interp(u_star, self._u, self._sth)
+        #print "tangent th = {:.3f} deg".format(tangent_th*180.0/np.pi)
+        lookAhead = 0.1  # how far forward in u
+        lookaheadState = Utility.splineToEuclidean2D(self._splineCoeffs, min(u_star + lookAhead, self._u[-1]))
+        #print "lookahead X = {:.3f}, {:.3f}".format(lookaheadState[0], lookaheadState[1])
+        dx_global = lookaheadState[0] - closest[0]
+        dy_global = lookaheadState[1] - closest[1]
+        #print "dx_global = {:.3f}, dy_global = {:.3f}".format(dx_global, dy_global)
+        dx_frenet = dx_global*math.cos(tangent_th) + dy_global*math.sin(tangent_th)
+        dy_frenet = dx_global*math.sin(tangent_th) - dy_global*math.cos(tangent_th)
+        #print "y error = {:.3f}, dx_frenet = {:.3f}, dy_frenet = {:.3f}".format(distance, dx_frenet, dy_frenet)
+
+        # need sign of distance to spline to change
+        # look at sign of cross product to determine "handed-ness"
+        angle_from_closest_to_test = math.atan2(closest[1] - y, closest[0] - x)
+        #print "angle from closest to test = {:.3f} deg".format(angle_from_closest_to_test*180./np.pi)
+        sign_test = np.cross([math.cos(tangent_th), math.sin(tangent_th)], [math.cos(angle_from_closest_to_test), math.sin(angle_from_closest_to_test)])
+        distance *= np.sign(sign_test)
+        #print "distance to spline after sign update = {:.3f}".format(distance)
+
+        # resulting triangle
+        relative_angle = math.atan2((distance - dy_frenet), dx_frenet)
+        global_angle = tangent_th + relative_angle
+        #print "relative angle = {:.3f} deg, global angle = {:.3f} deg".format(relative_angle*180./np.pi, global_angle*180./np.pi)
+
+        state = np.zeros((6,))
+        state[4] = global_angle
+        state[2] = 1.0
+        self.controller.idealState = state
+
+# TODO finish FollowPerimeter
+#class FollowPerimeter(Strategy):

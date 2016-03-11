@@ -17,8 +17,9 @@ class Design(object):
         self._momentOfInertia = 0.0  # [kg/m^2]
         self._dragAreas = [0.0, 0.0, 0.0]  # surge, sway, rotation [m^2]
         self._dragCoeffs = [0.0, 0.0, 0.0]  # surge, sway, rotation [-]
-        self._maxSpeed = 0.0
+        self._maxSpeed = 0.0  # [m/s]
         self._minSpeed = 0.0
+        self._maxHeadingRate = 0.0  # maximum turning speed [rad/s]
         self._maxForwardThrust = 0.0
         self._speedVsMinRadius = np.zeros((1, 2))  # 2 column array, speed vs. min turning radius
 
@@ -66,6 +67,10 @@ class Design(object):
     def minSpeed(self):
         return self._minSpeed
 
+    @property
+    def maxHeadingRate(self):
+        return self._maxHeadingRate
+
 
 class Lutra(Design):
     def __init__(self):
@@ -99,14 +104,19 @@ class TankDriveDesign(Lutra):
         # self._minThrustPerMotor = 0.0  # assume no drop in thrust for backdriving
         self._momentArm = 0.3556  # distance between the motors [m]
         self._maxForwardThrust = 2.*self._maxThrustPerMotor
-        # TODO - build minimum turning radius map for tank drive design. Using dummy values now
         self._speedVsMinRadius = np.array([
-            [0, 0],
-            [0.5, 3.0],
-            [1.0, 6.0],
-            [2.0, 9.0],
-            [2.5, 12.0]
+            [0.84, 2.0],
+            [1.18, 3.0],
+            [1.37, 3.75],
+            [1.57, 4.5],
+            [1.84, 6.0],
+            [2.12, 9.0],
+            [2.18, 10.0],
+            [2.31, 20.0],
+            [2.39, 30.0]
         ])
+        # below 1 m/s, you should probably just turn in place!
+        self._maxHeadingRate = 0.403  # [rad/s]
 
     def thrustAndMomentFromFractions(self, thrustFraction, momentFraction):
         thrustSway = 0.0

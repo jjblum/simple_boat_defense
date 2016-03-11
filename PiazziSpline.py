@@ -12,7 +12,7 @@ def wrapTo2Pi(angle):
 
 
 # eta=[10., 10., 0., 0., 750., 750.]
-def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, eta=[5., 5., 0., 0., 700., 700.]):
+def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=200, eta=[5., 5., 0., 0., 700., 700.]):
     """
     :param x0: x coordinate, starting point
     :param y0: y coordinate, starting point
@@ -89,6 +89,7 @@ def piazziSpline(x0, y0, th0, x1, y1, th1, k0=0, k0dot=0, k1=0, k1dot=0, N=100, 
     singularities = np.where(np.abs(np.abs(dth) - 0.5) < m.pow(10., -4))
     # erroneous sth jumps from pi/2 or -pi/2 to 0, so correct sth should be approx. equal to erroneous dth
     sth[singularities] = dth[singularities]
+    sth[0] = sth[1]
     return sx, sy, sth*m.pi, length, u, ((a0, a1, a2, a3, a4, a5, a6, a7), (b0, b1, b2, b3, b4, b5, b6, b7))
 
 
@@ -116,7 +117,7 @@ def splineOpenChain(waypoints, ths=None, Ns=None, eta=[2., 2., 0., 0., -100., -1
         ths = np.r_[ths, exitAngles[-1]]
 
     if Ns is None:
-        Ns = 100.*np.ones((spline_count,))
+        Ns = 200.*np.ones((spline_count,))
     sx = np.zeros((sum(Ns),))
     sy = np.zeros((sum(Ns),))
     sth = np.zeros((sum(Ns),))
@@ -232,8 +233,8 @@ def main_closed_chain():
 
 def main_open_chain_default_angles():
     # a chain test
-    x = [0, 1, -10, -7]
-    y = [0, 10, -1, -3]
+    x = [0, 3, -20, -10]
+    y = [0, 30, -5, -3]
     X = np.column_stack((x, y))
     Ns = np.random.random_integers(100., 200., (X.shape[0]-1,))
     sx, sy, sth, length, u, coeffs = splineOpenChain(X, Ns=Ns)
@@ -276,5 +277,5 @@ if __name__ == '__main__':
     # main_single()
     # main_open_chain()
     # main_closed_chain()
-    # main_open_chain_default_angles()
-    main_closed_chain_default_angles()
+    main_open_chain_default_angles()
+    # main_closed_chain_default_angles()
