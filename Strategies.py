@@ -613,8 +613,11 @@ class SingleSpline(Strategy):
 
     def idealState(self):
         # find closest point on the spline
-        u_star, closest, error_y = Utility.closestPointOnSpline2D(
-                self._length, self._sx, self._sy, self.boat.state[0], self.boat.state[1], self._u, self._splineCoeffs)
+        try:
+            u_star, closest, error_y = Utility.closestPointOnSpline2D(
+                    self._length, self._sx, self._sy, self.boat.state[0], self.boat.state[1], self._u, self._splineCoeffs)
+        except:
+            return np.zeros((6,))  # handle when u_star is NaN inside the call, it returns None
         tangent_th = np.interp(u_star, self._u, self._sth)
         # we don't just go in straight lines, so find the location that is lookaheadDistance forward on the spline
         u_lookahead = max(0.0, min(u_star + self._lookAhead, 1.0))
@@ -858,10 +861,14 @@ class FollowWaypoints(Strategy):
         self._totalLength = self._length[-1]
 
     def idealState(self):
-        """
+        x = self.boat.state[0]
+        y = self.boat.state[1]
         state = np.zeros((6,))
-        u_star, global_angle = Utility.LOS_angle(self._length, self._sx, self._sy, self._sth, self._u,
-                                                 self._splineCoeffs, self.boat.state[0], self.boat.state[1])
+        try:
+            u_star, global_angle = Utility.LOS_angle(
+                    self._length, self._sx, self._sy, self._sth, self._u, self._splineCoeffs, x, y)
+        except:
+            return np.zeros((6,))
         state[4] = global_angle
         tangent_th = np.interp(u_star, self._u, self._sth)
         th_lookahead = max(0.0,
@@ -873,11 +880,11 @@ class FollowWaypoints(Strategy):
 
         state[2] = min(surgeVelocityCap, self._surgeVelocity)
         self.controller.idealState = state
+
+
         """
-        x = self.boat.state[0]
-        y = self.boat.state[1]
         u_star, closest, distance = Utility.closestPointOnSpline2D(self._length, self._sx, self._sy, x, y, self._u, self._splineCoeffs)
-        print "boat X = {:.3f}, {:.3f}  closest X = {:.3f}, {:.3f}  u* = {}".format(x, y, closest[0], closest[1], u_star)
+        # print "boat X = {:.3f}, {:.3f}  closest X = {:.3f}, {:.3f}  u* = {}".format(x, y, closest[0], closest[1], u_star)
 
         # Figure out the LOS controller using this example
         tangent_th = np.interp(u_star, self._u, self._sth)
@@ -904,11 +911,11 @@ class FollowWaypoints(Strategy):
         relative_angle = math.atan2((distance - dy_frenet), dx_frenet)
         global_angle = tangent_th + relative_angle
         #print "relative angle = {:.3f} deg, global angle = {:.3f} deg".format(relative_angle*180./np.pi, global_angle*180./np.pi)
-
         state = np.zeros((6,))
         state[4] = global_angle
         state[2] = 1.0
         self.controller.idealState = state
+        """
 
 # TODO finish FollowPerimeter
 #class FollowPerimeter(Strategy):

@@ -13,6 +13,9 @@ def splineToEuclidean2D(spline_coeffs, u):
     """
     if not isinstance(spline_coeffs, list):
         spline_coeffs = [spline_coeffs]
+    if np.isnan(u-1.e-12):
+        print "WARNING: u is NaN"
+        return
     spline_index = max(0, int(u - 1.e-12))
     a = spline_coeffs[spline_index][0]  # subtract a tiny number to avoid a perfect integer
     b = spline_coeffs[spline_index][1]
@@ -142,10 +145,13 @@ def closestPointOnSpline2D(length, sx, sy, x, y, u, coeffs, guess=None):
     # check that distance to u_star isn't more than closest euclidean point
     # if it is, something went terribly wrong
     # just use the closest euclidean point
+    if np.isnan(u_star):
+        print "WARNING: u* is NaN"
+        return
     post_quadratic_S = splineToEuclidean2D(coeffs, u_star)
     post_quadratic_distance = spatial.distance.euclidean(post_quadratic_S, X)
     if post_quadratic_distance > closest_distance:
-        print "WARNING: quadratic phase is incorrect, using euclidean distance guess instead"
+        # print "WARNING: quadratic phase is incorrect, using euclidean distance guess instead"
         return u[closest], np.array([sx[closest], sy[closest]]), closest_distance
 
 
@@ -172,10 +178,14 @@ def closestPointOnSpline2D(length, sx, sy, x, y, u, coeffs, guess=None):
 
 
 def LOS_angle(length, sx, sy, sth, u, coeffs, x, y, lookAhead=0.1):
-    u_star, closest, distance = closestPointOnSpline2D(length, sx, sy, x, y, u, coeffs, guess=None)
-    print "closest X = {:.3f}, {:.3f}, u* = {:.2f}".format(closest[0], closest[1], u_star)
+    try:
+        u_star, closest, distance = closestPointOnSpline2D(length, sx, sy, x, y, u, coeffs, guess=None)
+    except:
+        # u_star probably NaN inside the function call
+        return None
+    #print "closest X = {:.3f}, {:.3f}, u* = {:.2f}".format(closest[0], closest[1], u_star)
     tangent_th = np.interp(u_star, u, sth)
-    print "tangent_th = {:.2f}".format(np.rad2deg(tangent_th))
+    #print "tangent_th = {:.2f}".format(np.rad2deg(tangent_th))
     wrapped_lookahead = np.mod(u_star + lookAhead, u[-1])  # this will make u wrap around a closed spline
     lookaheadState = splineToEuclidean2D(coeffs, wrapped_lookahead)
     dx_global = lookaheadState[0] - closest[0]

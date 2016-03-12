@@ -15,33 +15,41 @@ import Metrics
 
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
 WITH_PLOTTING = True
+PLOT_MAIN = True
+PLOT_METRIC = False
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
-BOAT_COUNT = 8
-ATTACKER_COUNT = 1
+BOAT_COUNT = 3
+ATTACKER_COUNT =1
 MAX_DEFENDERS_PER_RING = np.arange(8.0, 100.0, 2.0)
 RADII_OF_RINGS = np.arange(8.0, 600.0, 4.0)
 ATTACKER_REMOVAL_DISTANCE = 1.0
 ASSET_REMOVAL_DISTANCE = 1.0
+# TODO - tune this probability or figure out how to treat an interaction as a single interaction (perhaps spawn an object tracking the pairwise interaction)
+PROB_OF_ATK_REMOVAL_PER_TICK = 0.2  # every time step this probability is applied
 
 if WITH_PLOTTING:
     figx = 20.0
     figy = 10.0
     fig = plt.figure(figsize=(figx, figy))
-    ax_metric = fig.add_axes([figy/figx, 0.08, 0.5, 0.8], projection='polar')
-    ax_main = fig.add_axes([0.01, 0.01, 0.95*figy/figx, 0.95])  # main ax must come last for arrows to appear on it!!!
-    ax_main.elev = 10
-    ax_main.grid(b=False)  # no grid b/c it won't update correctly
-    ax_metric.grid(b=True)
-    ax_main.set_xticks([])  # turn off axis labels b/c they wont update correctly
-    ax_main.set_yticks([])  # turn off axis labels b/c they wont update correctly
-    defenders_arrows = None
-    attackers_arrows = None
-    assets_arrows = None
+    if PLOT_METRIC:
+        ax_metric = fig.add_axes([figy/figx, 0.08, 0.5, 0.8], projection='polar')
+        ax_metric.grid(b=True)
+    if PLOT_MAIN:
+        ax_main = fig.add_axes([0.01, 0.01, 0.95*figy/figx, 0.95])  # main ax must come last for arrows to appear on it!!!
+        ax_main.elev = 10
+        ax_main.grid(b=False)  # no grid b/c it won't update correctly
+        ax_main.set_xticks([])  # turn off axis labels b/c they wont update correctly
+        ax_main.set_yticks([])  # turn off axis labels b/c they wont update correctly
+        defenders_arrows = None
+        attackers_arrows = None
+        assets_arrows = None
     plt.ioff()
     fig.show()
-    background_metric = fig.canvas.copy_from_bbox(ax_metric.bbox)
-    background_main = fig.canvas.copy_from_bbox(ax_main.bbox)  # must be below fig.show()!
+    if PLOT_METRIC:
+        background_metric = fig.canvas.copy_from_bbox(ax_metric.bbox)
+    if PLOT_MAIN:
+        background_main = fig.canvas.copy_from_bbox(ax_main.bbox)  # must be below fig.show()!
     fig.canvas.draw()
 
 
@@ -67,96 +75,100 @@ def plotSystem(assets, defenders, attackers, defenseMetric, title_string, plot_t
     square_max = max(max([x_max, y_max]), 5.0)
 
     axes = [mean_x-square_max, mean_x+square_max, mean_y-square_max, mean_y+square_max]
-    ax_main.plot([mean_x-square_max, mean_x+square_max], [mean_y-square_max, mean_y+square_max],
-                 'x', markersize=1, markerfacecolor='white', markeredgecolor='white')
-    ax_main.axis(axes)  # requires those invisible 4 corner white markers
+    if PLOT_MAIN:
+        ax_main.plot([mean_x-square_max, mean_x+square_max], [mean_y-square_max, mean_y+square_max],
+                     'x', markersize=1, markerfacecolor='white', markeredgecolor='white')
+        ax_main.axis(axes)  # requires those invisible 4 corner white markers
 
-    fig.canvas.restore_region(background_metric)
-    fig.canvas.restore_region(background_main)
+    if PLOT_METRIC:
+        fig.canvas.restore_region(background_metric)
+    if PLOT_MAIN:
+        fig.canvas.restore_region(background_main)
 
-    # plot the metric polar plot
-    max_r = np.max(defenseMetric.polarPlotData[:, 1])
-    min_r = np.min(defenseMetric.polarPlotData[:, 1])
-    avg_r = np.mean(defenseMetric.polarPlotData[:, 1])
-    # TODO - get the polar plot to update its tickmarks or the maximum radius, because they aren't updating right now
-    ax_metric.set_rmax(max_r*2.0)
-    ax_metric.draw_artist(ax_metric.plot(defenseMetric.polarPlotData[:, 0],
+    if PLOT_METRIC:
+        # plot the metric polar plot
+        max_r = np.max(defenseMetric.polarPlotData[:, 1])
+        min_r = np.min(defenseMetric.polarPlotData[:, 1])
+        avg_r = np.mean(defenseMetric.polarPlotData[:, 1])
+        # TODO - get the polar plot to update its tickmarks or the maximum radius, because they aren't updating right now
+        ax_metric.set_rmax(max_r*2.0)
+        ax_metric.draw_artist(ax_metric.plot(defenseMetric.polarPlotData[:, 0],
                                          defenseMetric.polarPlotData[:, 1], 'b-', linewidth=4.0)[0])
-    # TODO - convert defenders_x and defenders_y into x and y relative to the asset so they can be put into polar form
-    relative_x = defenders_x - mean_x
-    relative_y = defenders_y - mean_y
-    defenders_r = np.sqrt(np.power(relative_x, 2.) + np.power(relative_y, 2.))
-    defenders_phi = np.arctan2(relative_y, relative_x)
-    ax_metric.draw_artist(ax_metric.plot(defenders_phi, defenders_r, 'go', ms=14.0)[0])
+        # TODO - convert defenders_x and defenders_y into x and y relative to the asset so they can be put into polar form
+        relative_x = defenders_x - mean_x
+        relative_y = defenders_y - mean_y
+        defenders_r = np.sqrt(np.power(relative_x, 2.) + np.power(relative_y, 2.))
+        defenders_phi = np.arctan2(relative_y, relative_x)
+        ax_metric.draw_artist(ax_metric.plot(defenders_phi, defenders_r, 'go', ms=14.0)[0])
 
+        # plot inscribed circle
+        ax_metric.draw_artist(ax_metric.plot(np.linspace(-np.pi, np.pi, 100), min_r*np.ones(100,), 'm-', linewidth=6.0)[0])
+        # plot mean circle
+        ax_metric.draw_artist(ax_metric.plot(np.linspace(-np.pi, np.pi, 100), avg_r*np.ones(100,), 'c--', linewidth=3.0)[0])
 
-    # plot inscribed circle
-    ax_metric.draw_artist(ax_metric.plot(np.linspace(-np.pi, np.pi, 100), min_r*np.ones(100,), 'm-', linewidth=6.0)[0])
-    # plot mean circle
-    ax_metric.draw_artist(ax_metric.plot(np.linspace(-np.pi, np.pi, 100), avg_r*np.ones(100,), 'c--', linewidth=3.0)[0])
+    if PLOT_MAIN:
+        defender_arrows = [pylab.arrow(defenders_x[j], defenders_y[j],
+                                       0.05*math.cos(defenders_th[j]),
+                                       0.05*math.sin(defenders_th[j]),
+                                       fc="g", ec="g", head_width=0.5, head_length=1.0) for j in range(len(defenders_x))]
+        attacker_arrows = [pylab.arrow(attackers_x[j], attackers_y[j],
+                                       0.05*math.cos(attackers_th[j]),
+                                       0.05*math.sin(attackers_th[j]),
+                                       fc="r", ec="r", head_width=0.5, head_length=1.0) for j in range(len(attackers_x))]
+        asset_arrows = [pylab.arrow(assets_x[j], assets_y[j],
+                        0.05*math.cos(assets_th[j]),
+                        0.05*math.sin(assets_th[j]),
+                        fc="b", ec="b", head_width=0.5, head_length=1.0) for j in range(len(assets_x))]
 
-    defender_arrows = [pylab.arrow(defenders_x[j], defenders_y[j],
-                                   0.05*math.cos(defenders_th[j]),
-                                   0.05*math.sin(defenders_th[j]),
-                                   fc="g", ec="g", head_width=0.5, head_length=1.0) for j in range(len(defenders_x))]
-    attacker_arrows = [pylab.arrow(attackers_x[j], attackers_y[j],
-                                   0.05*math.cos(attackers_th[j]),
-                                   0.05*math.sin(attackers_th[j]),
-                                   fc="r", ec="r", head_width=0.5, head_length=1.0) for j in range(len(attackers_x))]
-    asset_arrows = [pylab.arrow(assets_x[j], assets_y[j],
-                    0.05*math.cos(assets_th[j]),
-                    0.05*math.sin(assets_th[j]),
-                    fc="b", ec="b", head_width=0.5, head_length=1.0) for j in range(len(assets_x))]
-
-    for boat in assets + defenders + attackers:
-        if boat.plotData is not None:
-            if boat.type == "asset":
-                style = 'b-'
-            elif boat.type == "defender":
-                style = 'g-'
-            elif boat.type == "attacker":
-                style = 'r-'
-            ax_main.draw_artist(ax_main.plot(boat.plotData[:, 0], boat.plotData[:, 1], style, linewidth=0.25)[0])
+        for boat in assets + defenders + attackers:
+            if boat.plotData is not None:
+                if boat.type == "asset":
+                    style = 'b-'
+                elif boat.type == "defender":
+                    style = 'g-'
+                elif boat.type == "attacker":
+                    style = 'r-'
+                ax_main.draw_artist(ax_main.plot(boat.plotData[:, 0], boat.plotData[:, 1], style, linewidth=0.25)[0])
 
     # rectangle coords
     left, width = 0.01, 0.95
     bottom, height = 0.0, 0.96
     right = left + width
     top = bottom + height
-    time_text = ax_main.text(right, top, "time = {:.2f} s".format(plot_time),
-                             horizontalalignment='right', verticalalignment='bottom',
-                             transform=ax_main.transAxes, size=20)
-    asset_position_text = ax_main.text(0.5*(left + right), bottom,
-                                       "asset (x,y) = {:.2f},{:.2f}".format(mean_x, mean_y),
-                                       horizontalalignment='center', verticalalignment='bottom',
+    if PLOT_MAIN:
+        time_text = ax_main.text(right, top, "time = {:.2f} s".format(plot_time),
+                                 horizontalalignment='right', verticalalignment='bottom',
+                                 transform=ax_main.transAxes, size=20)
+        asset_position_text = ax_main.text(0.5*(left + right), bottom,
+                                           "asset (x,y) = {:.2f},{:.2f}".format(mean_x, mean_y),
+                                           horizontalalignment='center', verticalalignment='bottom',
+                                           transform=ax_main.transAxes, size=20)
+        main_title_text = ax_main.text(left, top, "{s}".format(s=title_string),
+                                       horizontalalignment='left', verticalalignment='bottom',
                                        transform=ax_main.transAxes, size=20)
-    main_title_text = ax_main.text(left, top, "{s}".format(s=title_string),
-                                   horizontalalignment='left', verticalalignment='bottom',
-                                   transform=ax_main.transAxes, size=20)
-    real_time_passed = time.time() - real_time_zero
-    time_ratio = assets[0].time/real_time_passed
-    time_ratio_text = ax_main.text(right, top - 0.03, "speed = {:.2f}x".format(time_ratio),
-                                   horizontalalignment='right', verticalalignment='bottom',
-                                   transform=ax_main.transAxes, size=20)
+        real_time_passed = time.time() - real_time_zero
+        time_ratio = assets[0].time/real_time_passed
+        time_ratio_text = ax_main.text(right, top - 0.03, "speed = {:.2f}x".format(time_ratio),
+                                       horizontalalignment='right', verticalalignment='bottom',
+                                       transform=ax_main.transAxes, size=20)
+        ax_main.draw_artist(main_title_text)
+        ax_main.draw_artist(asset_position_text)
+        ax_main.draw_artist(time_text)
+        ax_main.draw_artist(time_ratio_text)
+        for defender_arrow in defender_arrows:
+            ax_main.draw_artist(defender_arrow)
+        for attacker_arrow in attacker_arrows:
+            ax_main.draw_artist(attacker_arrow)
+        for asset_arrow in asset_arrows:
+            ax_main.draw_artist(asset_arrow)
+        fig.canvas.blit(ax_main.bbox)
 
-    metric_title_text = ax_metric.text(0.5, 0.95, "{:.0f}s contour".format(defenseMetric._timeThreshold),
-                                       horizontalalignment='center', verticalalignment='bottom',
-                                       transform=ax_metric.transAxes, size=20)
-    ax_metric.draw_artist(metric_title_text)
-
-
-    ax_main.draw_artist(main_title_text)
-    ax_main.draw_artist(asset_position_text)
-    ax_main.draw_artist(time_text)
-    ax_main.draw_artist(time_ratio_text)
-    for defender_arrow in defender_arrows:
-        ax_main.draw_artist(defender_arrow)
-    for attacker_arrow in attacker_arrows:
-        ax_main.draw_artist(attacker_arrow)
-    for asset_arrow in asset_arrows:
-        ax_main.draw_artist(asset_arrow)
-    fig.canvas.blit(ax_metric.bbox)
-    fig.canvas.blit(ax_main.bbox)
+    if PLOT_METRIC:
+        metric_title_text = ax_metric.text(0.5, 0.95, "{:.0f}s contour".format(defenseMetric._timeThreshold),
+                                           horizontalalignment='center', verticalalignment='bottom',
+                                           transform=ax_metric.transAxes, size=20)
+        ax_metric.draw_artist(metric_title_text)
+        fig.canvas.blit(ax_metric.bbox)
     # time.sleep(GLOBAL_DT/10)
 
 
@@ -207,10 +219,10 @@ def initialStrategy(assets, defenders, attackers, type="static_ring"):
     if type == "static_ring":
         for b in assets:
             None # asset does nothing
-            # b.strategy = Strategies.SingleSpline(b, [np.random.uniform(-20., 20.), np.random.uniform(-20., 20.)], np.random.uniform(-np.pi, np.pi), surgeVelocity=2.5)
-            # b.strategy = Strategies.SingleSpline(b, [10.0, 0.0], 0, surgeVelocity=2.5, driftDown=True)
+            # b.strategy = Strategies.SingleSpline(b, [np.random.uniform(-30., 20.), np.random.uniform(-30., 20.)], np.random.uniform(-np.pi, np.pi), surgeVelocity=2.5)
+            # b.strategy = Strategies.SingleSpline(b, [20.0, 20.0], 0, surgeVelocity=2.5, driftDown=True)
             # b.strategy = Strategies.Square(b, 1.0, 0.0, 10.0)
-            # b.strategy = Strategies.FollowWaypoints(b, np.column_stack(([1, 3, -20, -10], [0, 30, -5, -3])))
+            b.strategy = Strategies.FollowWaypoints(b, np.column_stack(([1, 3, -20, -10], [0, 30, -5, -3])), surgeVelocity=2.5)
             # b.strategy = Strategies.Circle_PID(b, [0., 25.0], 25., "ccw", surgeVelocity=0.5)
             # b.strategy = Strategies.Circle_LOS(b, [0., 1.5], 1.5, "ccw", surgeVelocity=0.6)
             # b.strategy = Strategies.SpinInPlace(b, direction="cw")
@@ -221,7 +233,8 @@ def initialStrategy(assets, defenders, attackers, type="static_ring"):
             #    b.strategy = Strategies.MoveToClosestAttacker(b)
             #else:
             #    None
-            b.strategy = Strategies.Circle_LOS(b, [0., 0.], 9.0, surgeVelocity=1.5)
+            #b.strategy = Strategies.Circle_LOS(b, [0., 0.], 9.0, surgeVelocity=1.5)
+            #b.strategy = Strategies.MoveToClosestAttacker(b)
         for b in attackers:
             #b.strategy = Strategies.MoveTowardAsset(b, 1.0)
             None
@@ -302,8 +315,8 @@ def main():
             b.control()
             states = spi.odeint(Boat.ode, b.state, times, (b,))
             b.state = states[1]
-            #if b.type == "asset":
-            #    print "t = {:.2f}, thdot = {:.3f}".format(t, b.state[5])
+            if b.type == "asset":
+                print "t = {:.2f}, u = {:.3f}".format(t, b.state[2])
         t += dt
         step += 1
 
@@ -341,8 +354,9 @@ def main():
             attackers_to_be_removed = []
             for d in range(len(def_vs_atk_closest_distances)):
                 if def_vs_atk_closest_distances[d] < ATTACKER_REMOVAL_DISTANCE:
-                    attackers_to_be_removed.append(d)
-                    # everything references these main lists, so this should cover all shared memory
+                    if np.random.uniform(0., 1.) < PROB_OF_ATK_REMOVAL_PER_TICK:
+                        attackers_to_be_removed.append(d)
+                        # everything references these main lists, so this should cover all shared memory
             for attacker in reversed(attackers_to_be_removed):
                 del attackers[attacker] # need to delete in backwards order to avoid index conflicts
         else:
