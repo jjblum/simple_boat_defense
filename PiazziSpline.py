@@ -105,7 +105,6 @@ def splineOpenChain(waypoints, ths=None, Ns=None, eta=[2., 2., 0., 0., -100., -1
     wp_count = waypoints.shape[0]
     spline_count = wp_count - 1
     if ths is None:
-        # TODO - calculate bisecting angle tangents (avg of sharp approach and exit angles)
         exit_edges = np.diff(waypoints, axis=0)  # calculate sharp angles
         entry_edges = np.roll(exit_edges, 1, axis=0)
         a = np.linalg.norm(exit_edges, axis=1)
@@ -185,8 +184,8 @@ def main_open_chain():
     # a chain test
     x = [10, 0, -10, 0]
     y = [0, 10, 0, -10]
-    X = np.column_stack((x, y))
     th = [m.pi/2., m.pi, -m.pi/2., 0.]
+    X = np.column_stack((x, y))
     Ns = np.random.random_integers(100., 200., (X.shape[0]-1,))
     sx, sy, sth, length, u, coeffs = splineOpenChain(X, th, Ns)
     endpoint_indices = np.cumsum(Ns)-1

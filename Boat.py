@@ -6,7 +6,7 @@ import Designs
 __author__ = 'jjb'
 
 
-def ode(state,t,boat):
+def ode(state, t, boat):
     # derivative of state at input state and time
     # this is in Boat, not Design, because only the forces and moment are relevant
     rho = 1000.0  # density of water [kg/m^3]

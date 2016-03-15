@@ -2,6 +2,7 @@ import abc  # abstract base classes
 import math
 import numpy as np
 import scipy.spatial as spatial
+import matplotlib.pyplot as plt
 import Controllers
 import PiazziSpline
 import Utility
@@ -11,7 +12,7 @@ import Utility
 
 # TODO - an "overseer" or "team" strategy that sets the strategy of more than one individuals
 
-# TODO - moving through a chain of way points
+# TODO - the overseer should assign the appropriate defender - maybe this should be more like an auction in a real distributed system
 
 # TODO - planning a path through vulnerabilities
 
@@ -19,12 +20,12 @@ import Utility
 #   DONE 1a) Move to asset
 #   1b) Follow trajectory toward asset
 #   1c) Follow trajectory onto line of attack
-#   1d) Move in a circle around asset (could be the same as perimeter patrol)
+#   DONE 1d) Move in a circle around asset (could be the same as perimeter patrol)
 #   DONE 2a) Point away from asset
 #   DONE 2b) Align heading with asset's heading
-#   3) Get into an ellipse around asset (extend long axis according to asset speed)
+#   3) Get into an ellipse (or other formation) around asset (extend long axis according to asset speed)
 #   4) Intercept - linear assumption - cast a ray where target may go, find where along that trajectory you can reach
-#   5) Patrol perimeter - ideal boat follows a circuit path at a specified velocity and direction
+#   DONE 5) Patrol perimeter - ideal boat follows a circuit path at a specified velocity and direction
 #           Will need to provide a chain of points as the path
 #   6) SEQUENCE: [get into ellipse, point away from asset]
 #   7) TIMED SEQUENCE: randomly switch back and forth between moving toward asset and circling around asset
@@ -617,7 +618,8 @@ class SingleSpline(Strategy):
             u_star, closest, error_y = Utility.closestPointOnSpline2D(
                     self._length, self._sx, self._sy, self.boat.state[0], self.boat.state[1], self._u, self._splineCoeffs)
         except:
-            return np.zeros((6,))  # handle when u_star is NaN inside the call, it returns None
+            self.controller.idealState = np.zeros((6,))  # handle when u_star is NaN inside the call, it returns None
+            return
         tangent_th = np.interp(u_star, self._u, self._sth)
         # we don't just go in straight lines, so find the location that is lookaheadDistance forward on the spline
         u_lookahead = max(0.0, min(u_star + self._lookAhead, 1.0))
@@ -665,7 +667,45 @@ class Weave(Strategy):
 """
 
 
-# TODO - Circle that uses LOS - the lookahead state is always given perfectly by a boat a certain angle ahead of current boat
+# TODO - make lookAhead a function of distance to the line! e^(-distance) very small distance is huge look ahead?
+class Line_LOS(Strategy):
+    # Lookahead is in meters here, very much unlike using a spline!
+    def __init__(self, boat, x0, y0, x1, y1, surgeVelocity=1.0, headingErrorSurgeCutoff=np.deg2rad(30.0), lookAhead=1.0):
+        super(Line_LOS, self).__init__(boat)
+        self._x0 = x0
+        self._x1 = x1
+        self._dx = x1-x0
+        self._dy = y1-y0
+        self._y0 = y0
+        self._y1 = y1
+        self._th = np.arctan2(self._dy, self._dx)
+        self._L = np.sqrt(np.power(self._dx, 2.)+np.power(self._dy, 2.))
+        self._destination = [x1, y1]
+        self._surgeVelocity = surgeVelocity
+        self._headingErrorSurgeCutoff = headingErrorSurgeCutoff
+        self.controller = Controllers.LineOfSight(boat, self._destination, headingErrorSurgeCutoff=headingErrorSurgeCutoff, driftDown=True)
+        self._lookAhead = lookAhead
+
+    def idealState(self):
+        state = np.zeros((6,))
+        # project point onto line
+        x = self.boat.state[0]
+        dx = x - self._x0
+        y = self.boat.state[1]
+        dy = y - self._y0
+        th = np.arctan2(dy, dx)
+        dth = np.abs(self._th - th)
+        currentL = np.linalg.norm(np.array([dx, dy]))*np.cos(dth)
+        projected_state = np.array([self._x0 + currentL*np.cos(self._th), self._y0 + currentL*np.sin(self._th)])
+        lookaheadState = projected_state + np.array([self._lookAhead*np.cos(self._th), self._lookAhead*np.sin(self._th)])
+        boatToLookahead = np.array([lookaheadState[0] - x, lookaheadState[1] - y])
+        boatToLookaheadAngle = np.arctan2(boatToLookahead[1], boatToLookahead[0])
+        state[2] = self._surgeVelocity
+        state[4] = boatToLookaheadAngle
+        self.controller.idealState = state
+
+
+
 class Circle_LOS(Strategy):
     def __init__(self, boat, center, radius, direction="cw", surgeVelocity=1.0):
         super(Circle_LOS, self).__init__(boat)
@@ -697,8 +737,6 @@ class Circle_LOS(Strategy):
         # print "lookahead angle = {:.2f} deg".format(np.rad2deg(lookaheadAngle))
         # print "lookahead state = {:.2f},{:.2f}".format(lookaheadState[0], lookaheadState[1])
         # print "desired global angle = {:.2f} deg".format(np.rad2deg(boatToLookaheadAngle))
-
-
 
 
 class Circle_PID(Strategy):
@@ -834,12 +872,19 @@ class DefensiveBlock(Strategy):
         self._strategy.idealState()
 
 
-# TODO finish FollowWaypoints
 class FollowWaypoints(Strategy):
-    def __init__(self, boat, waypoints, surgeVelocity=1.0, positionThreshold=1.0):
+    def __init__(self, boat, waypoints, headings=None, surgeVelocity=1.0, headingErrorSurgeCutoff=np.deg2rad(30.0),
+                 lookAhead=0.05, positionThreshold=1.0, closed_circuit=False):
         super(FollowWaypoints, self).__init__(boat)
         self._boat = boat
         self._waypoints = waypoints
+        self._headings = headings
+        self._headingErrorSurgeCutoff = headingErrorSurgeCutoff
+        self._closed_circuit = closed_circuit
+        if closed_circuit:
+            self._destination = None
+        else:
+            self._destination = waypoints[-1, :]  # the final waypoint
         self._surgeVelocity = surgeVelocity
         self._length = None
         self._sx = None
@@ -849,14 +894,21 @@ class FollowWaypoints(Strategy):
         self._u = None
         self._splineCoeffs = None
         self._totalLength = 0.0
-        self._lookAhead = 0.05
+        self._lookAhead = lookAhead
         self.generateSpline()
-        self._controller = Controllers.LineOfSight(boat, positionThreshold=positionThreshold, driftDown=False)
-        self._headingErrorSurgeCutoff = 45.0*math.pi/180.0  # thrust signal rolls off as a cosine, hitting zero here
+        self._controller = Controllers.LineOfSight(boat,
+                                                   destination=self._destination,
+                                                   positionThreshold=positionThreshold,
+                                                   driftDown=False,
+                                                   headingErrorSurgeCutoff=headingErrorSurgeCutoff)
 
     def generateSpline(self):
-        self._sx, self._sy, self._sth, self._length, self._u, self._splineCoeffs = \
-            PiazziSpline.splineOpenChain(self._waypoints)
+        if self._closed_circuit:
+            self._sx, self._sy, self._sth, self._length, self._u, self._splineCoeffs = \
+                PiazziSpline.splineClosedChain(self._waypoints, ths=self._headings)
+        else:
+            self._sx, self._sy, self._sth, self._length, self._u, self._splineCoeffs = \
+                PiazziSpline.splineOpenChain(self._waypoints, ths=self._headings)
         self.boat.plotData = np.column_stack((self._sx, self._sy))
         self._totalLength = self._length[-1]
 
@@ -866,56 +918,19 @@ class FollowWaypoints(Strategy):
         state = np.zeros((6,))
         try:
             u_star, global_angle = Utility.LOS_angle(
-                    self._length, self._sx, self._sy, self._sth, self._u, self._splineCoeffs, x, y)
+                    self._length, self._sx, self._sy, self._sth, self._u, self._splineCoeffs, x, y, lookAhead=self._lookAhead)
         except:
-            return np.zeros((6,))
+            self.controller.idealState = np.zeros((6,))
+            return
         state[4] = global_angle
         tangent_th = np.interp(u_star, self._u, self._sth)
-        th_lookahead = max(0.0,
-                           min(u_star + (1 + 0.5*self._surgeVelocity/self.boat.design.minSpeed)*self._lookAhead, 1.0))
-        lookahead_th = np.interp(th_lookahead, self._u, self._sth)
+        dth_lookahead = max(0.0,
+                            min(u_star + (1 + 0.5*self._surgeVelocity/self.boat.design.minSpeed)*self._lookAhead,
+                                u_star + 3.*self._lookAhead))
+        lookahead_th = np.interp(dth_lookahead, self._u, self._sth)
         clipped_lookahead_dth = np.clip(np.abs(lookahead_th - tangent_th), 0.0, self._headingErrorSurgeCutoff)
         surgeVelocityCap = max(self.boat.design.maxSpeed*math.cos(
                 math.pi/2.0*clipped_lookahead_dth/self._headingErrorSurgeCutoff), self.boat.design.minSpeed)
 
         state[2] = min(surgeVelocityCap, self._surgeVelocity)
         self.controller.idealState = state
-
-
-        """
-        u_star, closest, distance = Utility.closestPointOnSpline2D(self._length, self._sx, self._sy, x, y, self._u, self._splineCoeffs)
-        # print "boat X = {:.3f}, {:.3f}  closest X = {:.3f}, {:.3f}  u* = {}".format(x, y, closest[0], closest[1], u_star)
-
-        # Figure out the LOS controller using this example
-        tangent_th = np.interp(u_star, self._u, self._sth)
-        #print "tangent th = {:.3f} deg".format(tangent_th*180.0/np.pi)
-        lookAhead = 0.1  # how far forward in u
-        lookaheadState = Utility.splineToEuclidean2D(self._splineCoeffs, min(u_star + lookAhead, self._u[-1]))
-        #print "lookahead X = {:.3f}, {:.3f}".format(lookaheadState[0], lookaheadState[1])
-        dx_global = lookaheadState[0] - closest[0]
-        dy_global = lookaheadState[1] - closest[1]
-        #print "dx_global = {:.3f}, dy_global = {:.3f}".format(dx_global, dy_global)
-        dx_frenet = dx_global*math.cos(tangent_th) + dy_global*math.sin(tangent_th)
-        dy_frenet = dx_global*math.sin(tangent_th) - dy_global*math.cos(tangent_th)
-        #print "y error = {:.3f}, dx_frenet = {:.3f}, dy_frenet = {:.3f}".format(distance, dx_frenet, dy_frenet)
-
-        # need sign of distance to spline to change
-        # look at sign of cross product to determine "handed-ness"
-        angle_from_closest_to_test = math.atan2(closest[1] - y, closest[0] - x)
-        #print "angle from closest to test = {:.3f} deg".format(angle_from_closest_to_test*180./np.pi)
-        sign_test = np.cross([math.cos(tangent_th), math.sin(tangent_th)], [math.cos(angle_from_closest_to_test), math.sin(angle_from_closest_to_test)])
-        distance *= np.sign(sign_test)
-        #print "distance to spline after sign update = {:.3f}".format(distance)
-
-        # resulting triangle
-        relative_angle = math.atan2((distance - dy_frenet), dx_frenet)
-        global_angle = tangent_th + relative_angle
-        #print "relative angle = {:.3f} deg, global angle = {:.3f} deg".format(relative_angle*180./np.pi, global_angle*180./np.pi)
-        state = np.zeros((6,))
-        state[4] = global_angle
-        state[2] = 1.0
-        self.controller.idealState = state
-        """
-
-# TODO finish FollowPerimeter
-#class FollowPerimeter(Strategy):

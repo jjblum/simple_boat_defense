@@ -2,8 +2,6 @@ import numpy as np
 import abc
 import matplotlib.pyplot as plt
 import copy
-# import scipy.spatial as spatial
-# import Boat
 import Designs
 
 
@@ -33,6 +31,19 @@ class IntrustionRatio(DefenseMetric):
         super(IntrustionRatio, self).__init__(assets, defenders, attackers)
 
     def measureCurrentState(self):
+        return
+
+
+# TODO - minimum time to arrive contour polygons using the defender's frame rather than the asset's frame
+class RawTimeToArrive(DefenseMetric):
+    def __init__(self, assets, defenders, attackers, time_threshold=5.0):
+        super(RawTimeToArrive, self).__init__(assets, defenders, attackers)
+        self._time_threshold = time_threshold
+
+    def measureCurrentState(self):
+        # scipy.interpolate.RegularGridInterpolator on a 3 dimensional grid generated offline
+        # then transform into the global frame
+        # check if points in a grid around the asset are in the contour polygons
         return
 
 
@@ -167,23 +178,18 @@ class StaticRingMinimumTimeToArrive(DefenseMetric):
         # rightRadii = self._radii[contourRightIndices[:, 1]]  # don't need this b/c we use a fixed radius resolution!
         leftTTA = minimumTimeToArriveShifted[contourLeftIndices[:, 0], contourLeftIndices[:, 1]]
         rightTTA = minimumTimeToArriveShifted[contourRightIndices[:, 0], contourRightIndices[:, 1]]
-        # TODO - scenario where the current largest radius has a negative value. It needs something beyond that is positive. Increase radius again.
         slope = (rightTTA - leftTTA)/self._resolution_r
         contourRadius = -leftTTA/slope + leftRadii
         incompleteContourDict = dict()
         for i in range(contourRadius.shape[0]):
             incompleteContourDict[contourLeftIndices[i, 0]] = contourRadius[i]
-        #incompleteContourData = np.column_stack((contourLeftIndices[:, 0], contourRadius))
         contourData = np.zeros((self._ths.shape[0],))
         for i in range(self._ths.shape[0]):
             if i in incompleteContourDict.keys():
                 contourData[i] = incompleteContourDict[i]
 
-
-        # self.polarPlotData[:, 1] += np.random.normal(0.0, 0.005, size=self._ths.shape)
         self.polarPlotData[:, 1] = contourData
         self.polarPlotData[-1, 1] = self.polarPlotData[0, 1]  # prevent the erroneous hole at the period edge
-        # TODO - what happens when the time threshold is too big for any data to work?
 
     def minTimeToArriveContour(self, t):
         # return a numpy array, (th, r) where r is the radius attributed to arrival at time t for the given th

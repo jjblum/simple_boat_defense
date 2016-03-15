@@ -222,11 +222,16 @@ def initialStrategy(assets, defenders, attackers, type="static_ring"):
             # b.strategy = Strategies.SingleSpline(b, [np.random.uniform(-30., 20.), np.random.uniform(-30., 20.)], np.random.uniform(-np.pi, np.pi), surgeVelocity=2.5)
             # b.strategy = Strategies.SingleSpline(b, [20.0, 20.0], 0, surgeVelocity=2.5, driftDown=True)
             # b.strategy = Strategies.Square(b, 1.0, 0.0, 10.0)
-            b.strategy = Strategies.FollowWaypoints(b, np.column_stack(([1, 3, -20, -10], [0, 30, -5, -3])), surgeVelocity=2.5)
+            # b.strategy = Strategies.FollowWaypoints(b, np.column_stack(([1, 3, -20, -10], [0, 30, -5, -3])), surgeVelocity=2.5, closed_circuit=True)
             # b.strategy = Strategies.Circle_PID(b, [0., 25.0], 25., "ccw", surgeVelocity=0.5)
             # b.strategy = Strategies.Circle_LOS(b, [0., 1.5], 1.5, "ccw", surgeVelocity=0.6)
             # b.strategy = Strategies.SpinInPlace(b, direction="cw")
-            # TODO - turning ccw turns FASTER than turning cw???? Figure out why.
+            # b.strategy = Strategies.HoldHeading(b, surgeVelocity=5.)
+            # b.strategy = Strategies.StrategySequence(b, [
+            #    (Strategies.ChangeHeading, (b, -np.pi/2.)),
+            #    (Strategies.HoldHeading, (b, 5.0))
+            #])
+            # TODO - turning ccw turns FASTER than turning cw???? Figure out why. Surge velocity doesn't show this.
         for b in defenders:
             None
             #if not b.uniqueID % 4:
@@ -280,7 +285,8 @@ def main():
 
     # set up defense metric tools
     if SIMULATION_TYPE == "static_ring":
-        defenseMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=1.*np.pi/180., resolution_r=5.0, max_r=30.0, time_threshold=5.0)
+        #defenseMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=1.*np.pi/180., resolution_r=5.0, max_r=30.0, time_threshold=5.0)
+        defenseMetric = Metrics.RawTimeToArrive(assets, defenders, attackers, time_threshold=5.0)
     elif SIMULATION_TYPE == "convoy":
         #Metrics.DefenseMetric(assets, defenders, attackers)
         defenseMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=10.*np.pi/180.)
@@ -316,7 +322,7 @@ def main():
             states = spi.odeint(Boat.ode, b.state, times, (b,))
             b.state = states[1]
             if b.type == "asset":
-                print "t = {:.2f}, u = {:.3f}".format(t, b.state[2])
+                print "t = {:.2f}, thdot = {:.3f}, moment = {:.2f}, ".format(t, b.state[5], b._moment)
         t += dt
         step += 1
 
@@ -371,4 +377,5 @@ def main():
             plotSystem(assets, defenders, attackers, defenseMetric, SIMULATION_TYPE, t, real_time_zero)
     print "Finished {} simulated seconds in {} real-time seconds".format(t,  time.time() - real_time_zero)
 
-if __name__ == '__main__': main()
+if __name__ == '__main__':
+    main()

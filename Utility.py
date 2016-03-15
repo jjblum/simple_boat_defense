@@ -152,8 +152,8 @@ def closestPointOnSpline2D(length, sx, sy, x, y, u, coeffs, guess=None):
     post_quadratic_distance = spatial.distance.euclidean(post_quadratic_S, X)
     if post_quadratic_distance > closest_distance:
         # print "WARNING: quadratic phase is incorrect, using euclidean distance guess instead"
-        return u[closest], np.array([sx[closest], sy[closest]]), closest_distance
-
+        # return u[closest], np.array([sx[closest], sy[closest]]), closest_distance
+        u_star = u[closest]
 
     if np.isnan(u_star) or u_star > u[-1]:
         S = np.array([sx[-1], sy[-1]])
@@ -182,12 +182,14 @@ def LOS_angle(length, sx, sy, sth, u, coeffs, x, y, lookAhead=0.1):
         u_star, closest, distance = closestPointOnSpline2D(length, sx, sy, x, y, u, coeffs, guess=None)
     except:
         # u_star probably NaN inside the function call
+        print "WARNING: LOS_angle() had an error"
         return None
     #print "closest X = {:.3f}, {:.3f}, u* = {:.2f}".format(closest[0], closest[1], u_star)
     tangent_th = np.interp(u_star, u, sth)
     #print "tangent_th = {:.2f}".format(np.rad2deg(tangent_th))
     wrapped_lookahead = np.mod(u_star + lookAhead, u[-1])  # this will make u wrap around a closed spline
     lookaheadState = splineToEuclidean2D(coeffs, wrapped_lookahead)
+    #print "lookahead X = {:.3f}, {:.3f}".format(lookaheadState[0], lookaheadState[1])
     dx_global = lookaheadState[0] - closest[0]
     dy_global = lookaheadState[1] - closest[1]
     dx_frenet = dx_global*math.cos(tangent_th) + dy_global*math.sin(tangent_th)
@@ -200,47 +202,53 @@ def LOS_angle(length, sx, sy, sth, u, coeffs, x, y, lookAhead=0.1):
     # resulting triangle
     relative_angle = math.atan2((distance - dy_frenet), dx_frenet)
     global_angle = tangent_th + relative_angle
+    print "X = ({:.2f},{:.2f})  closest = ({:.2f},{:.2f})  distance = {:.2f}  relative angle = {:.2f} deg, global angle = {:.2f} deg".format(x, y, closest[0], closest[1], distance, np.rad2deg(relative_angle), np.rad2deg(global_angle))
     return u_star, global_angle
 
 
 def single_spline_main():
-    x = [0, -5.]
-    y = [0., 10.]
-    th = [0., np.pi]
+    #x = [0, -5.]
+    #y = [0., 10.]
+    #th = [0., np.pi]
+    x = [10., -10.]
+    y = [-10., 10.]
+    th = [-np.pi/4., -np.pi/4.]
     N = 500
     sx, sy, sth, length, u, coeffs = PiazziSpline.piazziSpline(x[0], y[0], th[0], x[1], y[1], th[1], N=N)
     plt.plot(sx, sy, 'k-', linewidth=2.0)
-    test_x = 1.0
-    test_y = 7.0
+    test_x = 0.5
+    test_y = 0.0
 
     u_star, closest, distance = closestPointOnSpline2D(length, sx, sy, test_x, test_y, u, coeffs, guess=None)
-    print "closest X = {:.3f}, {:.3f}".format(closest[0], closest[1])
+    #print "closest X = {:.3f}, {:.3f}, u* = {:.2f}".format(closest[0], closest[1], u_star)
 
     # Figure out the LOS controller using this example
     tangent_th = np.interp(u_star, u, sth)
-    print "tangent th = {:.3f} deg".format(tangent_th*180.0/np.pi)
-    lookAhead = 0.1  # how far forward in u
+    #print "tangent th = {:.3f} deg".format(tangent_th*180.0/np.pi)
+    lookAhead = 0.01  # how far forward in u
     lookaheadState = splineToEuclidean2D(coeffs, max(0.0, min(u_star + lookAhead, 1.0)))
-    print "lookahead X = {:.3f}, {:.3f}".format(lookaheadState[0], lookaheadState[1])
+    #print "lookahead X = {:.3f}, {:.3f}".format(lookaheadState[0], lookaheadState[1])
     dx_global = lookaheadState[0] - closest[0]
     dy_global = lookaheadState[1] - closest[1]
-    print "dx_global = {:.3f}, dy_global = {:.3f}".format(dx_global, dy_global)
+    #print "dx_global = {:.3f}, dy_global = {:.3f}".format(dx_global, dy_global)
     dx_frenet = dx_global*math.cos(tangent_th) + dy_global*math.sin(tangent_th)
     dy_frenet = dx_global*math.sin(tangent_th) - dy_global*math.cos(tangent_th)
-    print "y error = {:.3f}, dx_frenet = {:.3f}, dy_frenet = {:.3f}".format(distance, dx_frenet, dy_frenet)
+    #print "y error = {:.3f}, dx_frenet = {:.3f}, dy_frenet = {:.3f}".format(distance, dx_frenet, dy_frenet)
 
     # need sign of distance to spline to change
     # look at sign of cross product to determine "handed-ness"
     angle_from_closest_to_test = math.atan2(closest[1] - test_y, closest[0] - test_x)
-    print "angle from closest to test = {:.3f} deg".format(angle_from_closest_to_test*180./np.pi)
+    #print "angle from closest to test = {:.3f} deg".format(angle_from_closest_to_test*180./np.pi)
     sign_test = np.cross([math.cos(tangent_th), math.sin(tangent_th)], [math.cos(angle_from_closest_to_test), math.sin(angle_from_closest_to_test)])
     distance *= np.sign(sign_test)
-    print "distance to spline after sign update = {:.3f}".format(distance)
+    #print "distance to spline after sign update = {:.3f}".format(distance)
 
     # resulting triangle
     relative_angle = math.atan2((distance - dy_frenet), dx_frenet)
-    u_star, global_angle = LOS_angle(length, sx, sy, sth, u, coeffs, test_x, test_y)
+    global_angle = relative_angle + tangent_th
     print "relative angle = {:.3f} deg, global angle = {:.3f} deg".format(relative_angle*180./np.pi, global_angle*180./np.pi)
+    u_star, global_angle = LOS_angle(length, sx, sy, sth, u, coeffs, test_x, test_y, lookAhead=lookAhead)
+    #print "relative angle = {:.3f} deg, global angle = {:.3f} deg".format(relative_angle*180./np.pi, global_angle*180./np.pi)
 
     # plot
     plt.plot(test_x, test_y, 'r+', markersize=12., markeredgewidth=2.0)
@@ -260,10 +268,13 @@ def single_spline_main():
 
 # TODO - perhaps move all the geometry stuff into a function, because you will use it throughout the LOS controller
 def open_spline_chain_main():
-    x = [0, 3, -20, -10]
-    y = [0, 30, -5, -3]
+    #x = [0, 3, -20, -10]
+    #y = [0, 30, -5, -3]
+    #th = [np.pi/2., np.pi, -np.pi/2., 0.]
+    x = np.cos(np.deg2rad(135.))*np.array([-10., 1., 50.])
+    y = np.sin(np.deg2rad(135.))*np.array([-10., 1., 50.])
+    th = [np.deg2rad(135.), np.deg2rad(135.), np.deg2rad(135.)]
     X = np.column_stack((x, y))
-    th = [np.pi/2., np.pi, -np.pi/2., 0.]
     # Random desired discretization along the splines for demonstration purposes
     Ns = np.random.random_integers(100., 200., (X.shape[0]-1,))  # one less spline than waypoints.
     sx, sy, sth, length, u, coeffs = PiazziSpline.splineOpenChain(X, th, Ns)

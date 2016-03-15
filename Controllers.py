@@ -265,12 +265,12 @@ class PointAndShootPID(Controller):
 
 class LineOfSight(Controller):
 
-    def __init__(self, boat, destination=None, positionThreshold=1.0, driftDown=True):
+    def __init__(self, boat, destination=None, headingErrorSurgeCutoff=np.deg2rad(30.0), positionThreshold=1.0, driftDown=True):
         super(LineOfSight, self).__init__()
         self.boat = boat
-        self._headingPID = UniversalPID(boat, 10.0, 0.0, 0.0, boat.time, "heading_PID")
+        self._headingPID = UniversalPID(boat, 0.5, 0.0, 5.0, boat.time, "heading_PID")
         self._surgeVelocityPID = UniversalPID(boat, 1.0, 0.1, 0.1, boat.time, "surgeVelocity_PID")
-        self._headingErrorSurgeCutoff = 45.0*math.pi/180.0  # thrust signal rolls off as a cosine, hitting zero here
+        self._headingErrorSurgeCutoff = headingErrorSurgeCutoff  # thrust signal rolls off as a cosine, hitting zero here
         self._destination = destination
         self._positionThreshold = positionThreshold
         self._driftDown = driftDown
@@ -288,6 +288,7 @@ class LineOfSight(Controller):
 
         # the strategy is the part where the goal angle is calculated, so this should be super simple, just the PID output
         error_th = wrapToPi(self.boat.state[4] - self.idealState[4])
+        # print "error_th = {:.2f} deg".format(np.rad2deg(error_th))
         clippedAngleError = np.clip(math.fabs(error_th), 0.0, self._headingErrorSurgeCutoff)
         thrustReductionRatio = math.cos(math.pi/2.0*clippedAngleError/self._headingErrorSurgeCutoff)
         error_th_signal = self._headingPID.signal(error_th, self.boat.time)
