@@ -19,8 +19,8 @@ PLOT_MAIN = True
 PLOT_METRIC = False
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
-BOAT_COUNT = 3
-ATTACKER_COUNT =1
+BOAT_COUNT = 20
+ATTACKER_COUNT = 6
 MAX_DEFENDERS_PER_RING = np.arange(8.0, 100.0, 2.0)
 RADII_OF_RINGS = np.arange(8.0, 600.0, 4.0)
 ATTACKER_REMOVAL_DISTANCE = 1.0
@@ -97,8 +97,8 @@ def plotSystem(assets, defenders, attackers, defenseMetric, title_string, plot_t
         # TODO - convert defenders_x and defenders_y into x and y relative to the asset so they can be put into polar form
         relative_x = defenders_x - mean_x
         relative_y = defenders_y - mean_y
-        defenders_r = np.sqrt(np.power(relative_x, 2.) + np.power(relative_y, 2.))
-        defenders_phi = np.arctan2(relative_y, relative_x)
+        defenders_r = np.sqrt(np.power(relative_x, 2.) + np.power(relative_y, 2.))  # distance from asset to defender
+        defenders_phi = np.arctan2(relative_y, relative_x)  # angle from asset to defender
         ax_metric.draw_artist(ax_metric.plot(defenders_phi, defenders_r, 'go', ms=14.0)[0])
 
         # plot inscribed circle
@@ -119,6 +119,12 @@ def plotSystem(assets, defenders, attackers, defenseMetric, title_string, plot_t
                         0.05*math.cos(assets_th[j]),
                         0.05*math.sin(assets_th[j]),
                         fc="b", ec="b", head_width=0.5, head_length=1.0) for j in range(len(assets_x))]
+
+        # TODO - put this in the metric plot instead, of course
+        for d in defenders:
+            if d.TTAData is not None:
+                ax_main.draw_artist(ax_main.plot(d.TTAData[:, 0], d.TTAData[:, 1], 'm-')[0])
+
 
         for boat in assets + defenders + attackers:
             if boat.plotData is not None:
@@ -238,7 +244,7 @@ def initialStrategy(assets, defenders, attackers, type="static_ring"):
             #    b.strategy = Strategies.MoveToClosestAttacker(b)
             #else:
             #    None
-            #b.strategy = Strategies.Circle_LOS(b, [0., 0.], 9.0, surgeVelocity=1.5)
+            b.strategy = Strategies.Circle_LOS(b, [0., 0.], 9.0, surgeVelocity=2.5)
             #b.strategy = Strategies.MoveToClosestAttacker(b)
         for b in attackers:
             #b.strategy = Strategies.MoveTowardAsset(b, 1.0)
@@ -286,7 +292,7 @@ def main():
     # set up defense metric tools
     if SIMULATION_TYPE == "static_ring":
         #defenseMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=1.*np.pi/180., resolution_r=5.0, max_r=30.0, time_threshold=5.0)
-        defenseMetric = Metrics.RawTimeToArrive(assets, defenders, attackers, time_threshold=5.0)
+        defenseMetric = Metrics.DefenderFrameTimeToArrive(assets, defenders, attackers, time_threshold=8.0)
     elif SIMULATION_TYPE == "convoy":
         #Metrics.DefenseMetric(assets, defenders, attackers)
         defenseMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=10.*np.pi/180.)
@@ -321,8 +327,8 @@ def main():
             b.control()
             states = spi.odeint(Boat.ode, b.state, times, (b,))
             b.state = states[1]
-            if b.type == "asset":
-                print "t = {:.2f}, thdot = {:.3f}, moment = {:.2f}, ".format(t, b.state[5], b._moment)
+            #if b.type == "asset":
+            #    print "t = {:.2f}, thdot = {:.3f}, moment = {:.2f}, ".format(t, b.state[5], b._moment)
         t += dt
         step += 1
 

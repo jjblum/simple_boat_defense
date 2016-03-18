@@ -166,6 +166,8 @@ class StrategySequence(Strategy):
 
     # override
     def updateFinished(self):
+        self.time = self.boat.time
+        self._strategies[-1].time = self.boat.time
         self._strategies[-1].updateFinished()
         if self._strategies[-1].finished and \
                 self._currentStrategy < len(self.strategySequence) - 1:
@@ -230,10 +232,12 @@ class TimedStrategySequence(StrategySequence):
         self._strategies[-1].updateFinished()
         dt = (self.boat.time - self._currentStrategyStartTime)
 
-        if self._strategies[-1].finished or \
-                (self._currentStrategy == len(self.strategySequence) - 1 and
-                 dt >= self._strategyTiming[self._currentStrategy]):
+        # TODO - what am i doing here? _strategies[-1] is the current strategy, isn't it? so doesn't this shortcut the entire sequence?
+        if self._currentStrategy == len(self.strategySequence) - 1 and \
+           dt >= self._strategyTiming[self._currentStrategy]:
+
             # sequence is finished when last strategy in a sequence is finished or total time has run out
+            print "Strategy Sequence Finished"
             self._strategies.append(DoNothing(self.boat))
             self._strategy = self._strategies[-1]
             self.finished = True
@@ -373,6 +377,21 @@ class DestinationOnly(Strategy):
     def idealState(self):
         self.boat.plotData = np.atleast_2d(np.array([[self.boat.state[0], self.boat.state[1]], [self._destinationState[0], self._destinationState[1]]]))
         self.controller.idealState = self.destinationState  # update this here so the controller doesn't need to import Strategies
+
+
+class PointAtLocation(Strategy):
+    def __init__(self, boat, target):
+        super(PointAtLocation, self).__init__(boat)
+        self._boat = boat
+        self.controller = Controllers.HeadingOnlyPID(boat)
+        self._target = target
+
+    def idealState(self):
+        dx = self._target[0] - self.boat.state[0]
+        dy = self._target[1] - self.boat.state[1]
+        state = np.zeros((6,))
+        state[4] = np.arctan2(dy, dx)
+        self.controller.idealState = state
 
 
 class PointAtAsset(Strategy):
@@ -667,10 +686,10 @@ class Weave(Strategy):
 """
 
 
-# TODO - make lookAhead a function of distance to the line! e^(-distance) very small distance is huge look ahead?
+# TODO - make lookAhead a function of distance to the line! 1-e^(-1/distance) very small distance is huge look ahead?
 class Line_LOS(Strategy):
     # Lookahead is in meters here, very much unlike using a spline!
-    def __init__(self, boat, x0, y0, x1, y1, surgeVelocity=1.0, headingErrorSurgeCutoff=np.deg2rad(30.0), lookAhead=1.0):
+    def __init__(self, boat, x0, y0, x1, y1, surgeVelocity=1.0, headingErrorSurgeCutoff=np.deg2rad(30.0)):
         super(Line_LOS, self).__init__(boat)
         self._x0 = x0
         self._x1 = x1
@@ -684,7 +703,7 @@ class Line_LOS(Strategy):
         self._surgeVelocity = surgeVelocity
         self._headingErrorSurgeCutoff = headingErrorSurgeCutoff
         self.controller = Controllers.LineOfSight(boat, self._destination, headingErrorSurgeCutoff=headingErrorSurgeCutoff, driftDown=True)
-        self._lookAhead = lookAhead
+        self._lookAhead = 1.0
 
     def idealState(self):
         state = np.zeros((6,))
@@ -696,6 +715,9 @@ class Line_LOS(Strategy):
         th = np.arctan2(dy, dx)
         dth = np.abs(self._th - th)
         currentL = np.linalg.norm(np.array([dx, dy]))*np.cos(dth)
+        distance = np.linalg.norm(np.array([dx, dy]))*np.sin(dth)
+        self._lookAhead = 5.*(1.-np.tanh(0.1*distance))
+        print "distance = {:.2f} m   lookAhead = {:.2f} m".format(distance, self._lookAhead)
         projected_state = np.array([self._x0 + currentL*np.cos(self._th), self._y0 + currentL*np.sin(self._th)])
         lookaheadState = projected_state + np.array([self._lookAhead*np.cos(self._th), self._lookAhead*np.sin(self._th)])
         boatToLookahead = np.array([lookaheadState[0] - x, lookaheadState[1] - y])
@@ -703,7 +725,6 @@ class Line_LOS(Strategy):
         state[2] = self._surgeVelocity
         state[4] = boatToLookaheadAngle
         self.controller.idealState = state
-
 
 
 class Circle_LOS(Strategy):
