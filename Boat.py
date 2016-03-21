@@ -62,7 +62,10 @@ class Boat(object):
         self._strategy = Strategies.DoNothing(self)
         self._design = Designs.TankDriveDesign()
         self._plotData = None  # [x, y] data used to display current actions
-        self._TTAData = None  # time-to-arrive dictionary
+        self._TTAData = None  # time-to-arrive array
+        self._TTAPolygon = None  # time-to-arrive polygon object
+        self._busy = False  # a flag that prevents another strategy from being assigned
+        self._hasBeenTargeted = False  # a flag for attackers only. If a defender has been assigned to intercept, this is true.
         Boat.idCount += 1
 
     @property
@@ -196,6 +199,30 @@ class Boat(object):
     @TTAData.setter
     def TTAData(self, TTAData_in):
         self._TTAData = TTAData_in
+
+    @property
+    def TTAPolygon(self):
+        return self._TTAPolygon
+
+    @TTAPolygon.setter
+    def TTAPolygon(self, TTAPolygon_in):
+        self._TTAPolygon = TTAPolygon_in
+
+    @property
+    def busy(self):
+        return self._busy
+
+    @busy.setter
+    def busy(self, busy_in):
+        self._busy = busy_in
+
+    @property
+    def hasBeenTargeted(self):
+        return self._hasBeenTargeted
+
+    @hasBeenTargeted.setter
+    def hasBeenTargeted(self, hasBeenTargeted_in):
+        self._hasBeenTargeted = hasBeenTargeted_in
 
     def __str__(self):
         return "Boat {ID}: {T} at X = {X}, Y = {Y}, TH = {TH}".format(ID=self.uniqueID,

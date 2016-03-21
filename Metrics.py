@@ -4,9 +4,8 @@ import matplotlib.pyplot as plt
 import copy
 import Polygon as poly
 import Polygon.Utils as polyUtils
+import Polygon.Shapes as polyShapes
 import Designs
-
-
 
 
 class DefenseMetric(object):
@@ -18,6 +17,15 @@ class DefenseMetric(object):
         self._attackers = attackers
         self._value = None  # the metric itself
         self._polarPlotData = None
+        self._T = 0.0  # time threshold
+
+    @property
+    def timeThreshold(self):
+        return self._T
+
+    @timeThreshold.setter
+    def timeThreshold(self, T_in):
+        self._T = T_in
 
     @property
     def polarPlotData(self):
@@ -27,6 +35,14 @@ class DefenseMetric(object):
     def measureCurrentState(self):
         # calculate whatever metric you like
         return
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, value_in):
+        self._value = value_in
 
 
 # TODO - look at intrusion ratio (from that combined path following and obstacle avoidance paper) as a possible metric
@@ -38,7 +54,6 @@ class IntrustionRatio(DefenseMetric):
         return
 
 
-# TODO - minimum time to arrive contour polygons using the defender's frame rather than the asset's frame
 class DefenderFrameTimeToArrive(DefenseMetric):
     def __init__(self, assets, defenders, attackers, time_threshold=5.0):
         super(DefenderFrameTimeToArrive, self).__init__(assets, defenders, attackers)
@@ -47,6 +62,7 @@ class DefenderFrameTimeToArrive(DefenseMetric):
         self._rCoeff = 0.401354269952
         self._u0Coeff = 0.0914788305811
         self._T = time_threshold
+        self._polygons = dict()  # the polygons that represent TTA
 
     def measureCurrentState(self):
         # the RawTimeToArriveOffline.py file has the derivation of this
@@ -55,9 +71,6 @@ class DefenderFrameTimeToArrive(DefenseMetric):
         th = np.linspace(0., np.pi, 181)
         NTH = th.shape[0]
         R = np.zeros((ND, NTH))  # radius that matches the time threshold
-        polygons = dict()
-        #transforms = dict()
-        #bodyFrameData = dict()
 
         for i in range(ND):
             defender = self._defenders[i]
@@ -68,11 +81,7 @@ class DefenderFrameTimeToArrive(DefenseMetric):
             heading = defender.state[4]
             R[i, :] = 1./self._rCoeff*(self._T - self._thCoeff*th - self._u0Coeff*u0)
             R[R < 0.] = 0.
-            if u0 > 1.0 and self._T < 8.9:
-                # defender with forward velocity can't get back to where it started faster than 8.9 seconds
-                # for simplicity, just cut out the entire 3 meter circle where the plane fit for TTA breaks down
-                #R[i, np.where(R[i, :] < 3.0)] = 3.0
-                None
+
             bodyFrameData = np.row_stack((R[i, :]*np.cos(th), R[i, :]*np.sin(th), np.ones((1, NTH))))
 
             # mirror image the other side and invert y
@@ -80,6 +89,7 @@ class DefenderFrameTimeToArrive(DefenseMetric):
             bodyFrameDataFlipped[1, :] *= -1.
             bodyFrameData = np.column_stack((bodyFrameData, bodyFrameDataFlipped))
 
+            # transform from body frame into world frame
             transform = np.array([[np.cos(heading), -np.sin(heading), x], [np.sin(heading), np.cos(heading), y], [0., 0., 1.]])
             worldFrameData = np.dot(transform, bodyFrameData)
             worldFrameData = worldFrameData[:2, :]  # remove extra 1's from homogenous transform
@@ -88,14 +98,17 @@ class DefenderFrameTimeToArrive(DefenseMetric):
             for j in range(worldFrameData.shape[1]):
                 worldFrameList.append((worldFrameData[0, j], worldFrameData[1, j]))
             worldFrameTuple = tuple(worldFrameList)
-            polygons[uid] = polyUtils.prunePoints(polyUtils.Polygon(worldFrameTuple))  # remove any redundant points
-            defender.TTAData = np.array(polyUtils.pointList(polygons[uid]))
+            self._polygons[uid] = polyUtils.prunePoints(polyUtils.Polygon(worldFrameTuple))  # remove any redundant points
+            if u0 > 1.0 and self._T < 8.9:
+                # defender with forward velocity can't get back to where it started faster than 8.9 seconds
+                # for simplicity, just cut out the entire 3 meter circle where the plane fit for TTA breaks down
+                #R[i, np.where(R[i, :] < 3.0)] = 3.0
+                self._polygons[uid] -= polyShapes.Circle(radius=3.0, center=(x, y))
+            defender.TTAPolygon = self._polygons[uid]
+            defender.TTAData = np.array(polyUtils.pointList(self._polygons[uid]))
             defender.TTAData = np.row_stack((defender.TTAData, defender.TTAData[0, :]))
-        asdf = 0
 
-        # translate into the world frame
 
-        return
 
 
 class StaticRingMinimumTimeToArrive(DefenseMetric):

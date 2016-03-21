@@ -1,7 +1,12 @@
 import Boat
 import math
-import numpy
+import numpy as np
+import copy
 import Strategies
+import Metrics
+import Polygon as poly
+import Polygon.Utils as polyUtils
+
 
 
 class Team(object):
@@ -33,6 +38,15 @@ class Overseer(object):
         self._teams = list()
         self._atk_vs_asset_pairwise_distances = None
         self._def_vs_atk_pairwise_distances = None
+        self._defenseMetric = None
+
+    @property
+    def defenseMetric(self):
+        return self._defenseMetric
+
+    @defenseMetric.setter
+    def defenseMetric(self, defenseMetric_in):
+        self._defenseMetric = defenseMetric_in
 
     @property
     def atk_vs_asset_pairwise_distances(self):
@@ -79,6 +93,53 @@ class Overseer(object):
 
     def updateDefense(self):
         # e.g. if attackers get within a certain distance of the asset, assign the closest defender to intercept
+
+        T = self._defenseMetric.timeThreshold
+
+        # where will attackers be in T seconds? assume straight line constant velocity
+        for attacker in self._attackers:
+            if not attacker.hasBeenTargeted:
+                x0 = attacker.state[0]
+                y0 = attacker.state[1]
+                u = attacker.state[2]
+                th = attacker.state[4]
+                thdot = attacker.state[5]
+                x1 = x0 + u*np.cos(th)*T
+                y1 = y0 + u*np.sin(th)*T
+                #r = np.sqrt(np.power(x1 - x0, 2) + np.power(y1 - y0, 2))
+                #x1 += thdot*r*np.cos(th + np.pi/2.)*T
+                #y1 += thdot*r*np.sin(th + np.pi/2.)*T
+                # check if this is in any defender polygons
+                defenders_who_can_intercept = list()
+                defenders_who_are_not_busy = list()
+                difficulty_of_defense = list()  # how difficult it will be to intercept
+                for defender in self._defenders:
+                    polygon = defender.TTAPolygon
+                    if polygon.isInside(x1, y1) and np.abs(thdot) < np.deg2rad(1.0):  # attacker is on a straight line
+                        defenders_who_can_intercept.append(defender)
+                        heading_to_intercept = np.arctan2(y1 - defender.state[1], x1 - defender.state[0])
+                        difficulty_of_defense.append(np.abs(defender.state[4] - heading_to_intercept))
+                        if not defender.busy:
+                            defenders_who_are_not_busy.append(defender)
+
+                # assign best defender
+                if defenders_who_can_intercept != []:
+                    # sorted defenders
+                    sorted_defenders = [defenders_who_can_intercept[d] for d in np.argsort(difficulty_of_defense)]
+                    for defender in sorted_defenders:
+                        if defender in defenders_who_are_not_busy:
+                            defender.strategy = Strategies.DestinationOnly(defender, [copy.deepcopy(x1), copy.deepcopy(y1)])
+                            defender.busy = True
+                            attacker.hasBeenTargeted = True
+                            break
+                else:
+                    if np.sqrt(np.power(x1 - self.assets[0].state[0], 2) + np.power(self.assets[0].state[1], 2)) < 10.0:
+                        print "WARNING: no defenders can intercept an attacker!"
+
+
+
+
+
         return
 
     def updateAsset(self):

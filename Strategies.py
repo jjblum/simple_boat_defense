@@ -493,7 +493,7 @@ class PointWithAsset(Strategy):
 
 class MoveTowardAsset(Strategy):
     # nested strategy - uses DestinationOnly with the asset as the goal
-    def __init__(self, boat, positionThreshold):
+    def __init__(self, boat, positionThreshold=1.0):
         super(MoveTowardAsset, self).__init__(boat)
         self._strategy = DestinationOnly(boat, [self.assets[0].state[0], self.assets[0].state[1]], positionThreshold)  # the lower level nested strategy
         self.controller = self._strategy.controller

@@ -19,14 +19,14 @@ PLOT_MAIN = True
 PLOT_METRIC = False
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
-BOAT_COUNT = 20
-ATTACKER_COUNT = 6
+BOAT_COUNT = 8
+ATTACKER_COUNT = 2
 MAX_DEFENDERS_PER_RING = np.arange(8.0, 100.0, 2.0)
 RADII_OF_RINGS = np.arange(8.0, 600.0, 4.0)
 ATTACKER_REMOVAL_DISTANCE = 1.0
 ASSET_REMOVAL_DISTANCE = 1.0
 # TODO - tune this probability or figure out how to treat an interaction as a single interaction (perhaps spawn an object tracking the pairwise interaction)
-PROB_OF_ATK_REMOVAL_PER_TICK = 0.2  # every time step this probability is applied
+PROB_OF_ATK_REMOVAL_PER_TICK = 0.3  # every time step this probability is applied
 
 if WITH_PLOTTING:
     figx = 20.0
@@ -124,6 +124,11 @@ def plotSystem(assets, defenders, attackers, defenseMetric, title_string, plot_t
         for d in defenders:
             if d.TTAData is not None:
                 ax_main.draw_artist(ax_main.plot(d.TTAData[:, 0], d.TTAData[:, 1], 'm-')[0])
+                center = d.TTAPolygon.center()
+                ax_main.draw_artist(ax_main.plot(center[0], center[1], 'ms')[0])
+        for a in attackers:
+            ax_main.draw_artist(ax_main.plot(a.state[0] + a.state[2]*np.cos(a.state[4])*defenseMetric.timeThreshold,
+                                             a.state[1] + a.state[2]*np.sin(a.state[4])*defenseMetric.timeThreshold, 'mo', markersize=14)[0])
 
 
         for boat in assets + defenders + attackers:
@@ -200,7 +205,7 @@ def formDefenderRings(defenders):
 def randomAttackers(attackers):
     # attackers always start at some uniform random polar location, fixed radius 30
     for b in attackers:
-        radius = np.random.uniform(20., 40.)
+        radius = np.random.uniform(30., 40.)
         angle = np.random.uniform(0.0, 2*math.pi, 2)
         x = radius*math.cos(angle[0])
         y = radius*math.sin(angle[0])
@@ -248,6 +253,10 @@ def initialStrategy(assets, defenders, attackers, type="static_ring"):
             #b.strategy = Strategies.MoveToClosestAttacker(b)
         for b in attackers:
             #b.strategy = Strategies.MoveTowardAsset(b, 1.0)
+            b.strategy = Strategies.TimedStrategySequence(b, [
+                (Strategies.DoNothing, (b,)),
+                (Strategies.MoveTowardAsset, (b,))
+            ], [6.0, 1000.0])
             None
     elif type == "convoy":
         for b in assets:
@@ -297,6 +306,8 @@ def main():
         #Metrics.DefenseMetric(assets, defenders, attackers)
         defenseMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=10.*np.pi/180.)
 
+    overseer.defenseMetric = defenseMetric
+
     # move asset using ODE integration
     real_time_zero = time.time()
     t = 0.0
@@ -334,6 +345,9 @@ def main():
 
         # update any metrics
         defenseMetric.measureCurrentState()
+
+        # update any overseers
+        overseer.updateDefense()
 
         if len(attackers) > 0:
             # build location arrays for defenders, attackers, and assets
