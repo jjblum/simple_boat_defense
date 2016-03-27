@@ -802,6 +802,44 @@ class Circle_PID(Strategy):
         self.controller.idealState = np.array([x, y, u, w, th, thdot])
 
 
+class Circle_Tracking(Strategy):
+    def __init__(self, boat, center, target_boat, distance_fraction):
+        super(Circle_Tracking, self).__init__(boat)
+        self._boat = boat
+        self._center = center
+        self._target = target_boat
+        self._distance_fraction = distance_fraction
+        self.controller = Controllers.LineOfSight(boat, driftDown=False)
+        self._ths = np.linspace(-np.pi, np.pi, 100)
+
+    def idealState(self):
+        # angle of target with respect to center (projection on the circle)
+        target = self._target.state
+        target_th = np.arctan2(target[1] - self._center[1], target[0] - self._center[0])
+        dX = np.array([self.boat.state[0], self.boat.state[1]]) - np.array(self._center)
+        boatAngle = np.arctan2(dX[1], dX[0])
+        center_to_target = [target[0] - self._center[0], target[1] - self._center[1]]
+        target_radius = np.sqrt(np.power(center_to_target[0], 2) + np.power(center_to_target[1], 2))
+        radius = self._distance_fraction*target_radius
+        radius = max(5.0, radius)
+        # use cross product to determine which direction the lookahead needs to be
+        target_heading_line = [np.cos(self._target.state[4]), np.sin(self._target.state[4])]
+        cross = np.cross(center_to_target, target_heading_line)
+        lookaheadAngle = target_th + np.sign(cross)*np.deg2rad(1.0)
+        lookaheadState = np.array([self._center[0] + radius*np.cos(lookaheadAngle),
+                                   self._center[1] + radius*np.sin(lookaheadAngle)])
+        boatToLookahead = np.array([lookaheadState[0] - self.boat.state[0], lookaheadState[1] - self.boat.state[1]])
+        boatToLookaheadAngle = np.arctan2(boatToLookahead[1], boatToLookahead[0])
+
+        state = np.zeros((6,))
+        phidot = self._target.state[2]/target_radius
+        state[2] = 1.1*radius*phidot
+        state[4] = boatToLookaheadAngle
+        self.controller.idealState = state
+        #self.boat.plotData = np.column_stack(([self.boat.state[0], lookaheadState[0]], [self.boat.state[1], lookaheadState[1]]))
+        self.boat.plotData = np.column_stack((self._center[0] + radius*np.cos(self._ths), self._center[1] + radius*np.sin(self._ths)))
+
+
 class DestinationOnlyExecutor(Executor):
     def __init__(self, boat, destination, positionThreshold=1.0):
         super(DestinationOnlyExecutor, self).__init__(boat)

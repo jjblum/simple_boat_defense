@@ -133,6 +133,9 @@ class TankDriveDesign(Lutra):
     def speedVSMinRadius(self):
         return self._speedVsMinRadius
 
+    def maxCircularSpeed(self, circleRadius):
+        return np.interp(circleRadius, self.speedVSMinRadius[:, 1], self.speedVSMinRadius[:, 0])
+
 
 class VectoredThrustDesign(Lutra):
     def __init__(self):

@@ -67,6 +67,8 @@ class Boat(object):
         self._busy = False  # a flag that prevents another strategy from being assigned
         self._hasBeenTargeted = False  # a flag for attackers only. If a defender has been assigned to intercept, this is true.
         self._target = None  # the boat's current target agent
+        self._targetedBy = None  # if the boat has been targeted, this is the intercepting agent
+        self._pointOfInterception = None  # the location where an interception is predicted to happen
 
         Boat.idCount += 1
 
@@ -234,12 +236,34 @@ class Boat(object):
     def target(self, target_in):
         self._target = target_in
 
+    @property
+    def targetedBy(self):
+        return self._targetedBy
+
+    @targetedBy.setter
+    def targetedBy(self, targetedBy_in):
+        self._targetedBy = targetedBy_in
+
+    @property
+    def pointOfInterception(self):
+        return self._pointOfInterception
+
+    @pointOfInterception.setter
+    def pointOfInterception(self, pointOfInterception_in):
+        self._pointOfInterception = pointOfInterception_in
+
     def __str__(self):
         return "Boat {ID}: {T} at X = {X}, Y = {Y}, TH = {TH}".format(ID=self.uniqueID,
                                                                       X=self.state[0][0],
                                                                       Y=self.state[1][0],
                                                                       T=self.type,
                                                                       TH=self.state[4][0])
+
+    def distanceToBoat(self, otherBoat):
+        return np.sqrt(np.power(self._state[0] - otherBoat.state[0], 2) + np.power(self._state[1] - otherBoat.state[1], 2))
+
+    def distanceToPoint(self, point):
+        return np.sqrt(np.power(self._state[0] - point[0], 2) + np.power(self._state[1] - point[1], 2))
 
     def control(self):
         self.strategy.updateFinished()

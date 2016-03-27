@@ -108,6 +108,19 @@ class DefenderFrameTimeToArrive(DefenseMetric):
             defender.TTAData = np.array(polyUtils.pointList(self._polygons[uid]))
             defender.TTAData = np.row_stack((defender.TTAData, defender.TTAData[0, :]))
 
+        # Now combine the defender polygons into a single coverage polygon to simplify asset frame stuff
+        one_defender_polygon = self._defenders[0].TTAPolygon
+        for i in range(1, ND):
+            one_defender_polygon += self._defenders[i].TTAPolygon
+        boundingBox = one_defender_polygon.boundingBox()
+        #outer_contour = np.array(one_defender_polygon.contour(0))
+        #inner_contour = np.array(one_defender_polygon.contour(1))
+        th = np.deg2rad(np.arange(0.0, 360.0+0.001, 10.0))
+        #for th_ in th:
+            # find farthest point that is in the polygon
+
+
+
 
 
 

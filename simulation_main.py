@@ -19,8 +19,8 @@ PLOT_MAIN = True
 PLOT_METRIC = False
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
-BOAT_COUNT = 8
-ATTACKER_COUNT = 4
+BOAT_COUNT = 3
+ATTACKER_COUNT = 1
 print "{} ATTACKERS, {} DEFENDERS".format(ATTACKER_COUNT, BOAT_COUNT - 1 - ATTACKER_COUNT)
 MAX_DEFENDERS_PER_RING = np.arange(10.0, 100.0, 2.0)
 RADII_OF_RINGS = np.arange(10.0, 600.0, 5.0)
@@ -28,6 +28,7 @@ ATTACKER_REMOVAL_DISTANCE = 1.0
 ASSET_REMOVAL_DISTANCE = 1.0
 # TODO - tune this probability or figure out how to treat an interaction as a single interaction (perhaps spawn an object tracking the pairwise interaction)
 PROB_OF_ATK_REMOVAL_PER_TICK = 0.3  # every time step this probability is applied
+DEFENDER_TTA_CONTOUR = 12.0  # seconds of lookahead
 
 if WITH_PLOTTING:
     figx = 20.0
@@ -122,14 +123,14 @@ def plotSystem(assets, defenders, attackers, defenseMetric, title_string, plot_t
                         fc="b", ec="b", head_width=0.5, head_length=1.0) for j in range(len(assets_x))]
 
         # TODO - put this in the metric plot instead, of course
-        for d in defenders:
-            if d.TTAData is not None:
-                ax_main.draw_artist(ax_main.plot(d.TTAData[:, 0], d.TTAData[:, 1], 'm-')[0])
-                center = d.TTAPolygon.center()
-                ax_main.draw_artist(ax_main.plot(center[0], center[1], 'ms')[0])
-        for a in attackers:
-            ax_main.draw_artist(ax_main.plot(a.state[0] + a.state[2]*np.cos(a.state[4])*defenseMetric.timeThreshold,
-                                             a.state[1] + a.state[2]*np.sin(a.state[4])*defenseMetric.timeThreshold, 'mo', markersize=14)[0])
+        #for d in defenders:
+        #    if d.TTAData is not None:
+        #        ax_main.draw_artist(ax_main.plot(d.TTAData[:, 0], d.TTAData[:, 1], 'm-')[0])
+        #        center = d.TTAPolygon.center()
+        #        ax_main.draw_artist(ax_main.plot(center[0], center[1], 'ms')[0])
+        #for a in attackers:
+        #    ax_main.draw_artist(ax_main.plot(a.state[0] + a.state[2]*np.cos(a.state[4])*defenseMetric.timeThreshold,
+        #                                     a.state[1] + a.state[2]*np.sin(a.state[4])*defenseMetric.timeThreshold, 'mo', markersize=14)[0])
 
 
         for boat in assets + defenders + attackers:
@@ -250,14 +251,17 @@ def initialStrategy(assets, defenders, attackers, type="static_ring"):
             #    b.strategy = Strategies.MoveToClosestAttacker(b)
             #else:
             #    None
-            b.strategy = Strategies.Circle_LOS(b, [0., 0.], 10.0, surgeVelocity=2.5)
-            #b.strategy = Strategies.MoveToClosestAttacker(b)
+            # b.strategy = Strategies.Circle_LOS(b, [0., 0.], np.random.uniform(5.0, 20.0), surgeVelocity=2.5)
+            # b.strategy = Strategies.MoveToClosestAttacker(b)
+            b.strategy = Strategies.Circle_Tracking(b, [0., 0.], attackers[0], 0.25)
+
         for b in attackers:
             #b.strategy = Strategies.MoveTowardAsset(b, 1.0)
-            b.strategy = Strategies.TimedStrategySequence(b, [
-                (Strategies.DoNothing, (b,)),
-                (Strategies.MoveTowardAsset, (b,))
-            ], [np.random.uniform(0.0, 20.0), 1000.0])
+            b.strategy = Strategies.Circle_LOS(b, [0., 0.], b.distanceToBoat(assets[0]), direction="ccw", surgeVelocity=2.5)
+            #b.strategy = Strategies.TimedStrategySequence(b, [
+            #    (Strategies.Circle_LOS, (b, [0., 0.], b.distanceToBoat(assets[0]), b.design.maxSpeed)),
+            #    (Strategies.MoveTowardAsset, (b,))
+            #], [np.random.uniform(0.0, 20.0), 1000.0])
             None
     elif type == "convoy":
         for b in assets:
@@ -302,7 +306,7 @@ def main():
     # set up defense metric tools
     if SIMULATION_TYPE == "static_ring":
         #defenseMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=1.*np.pi/180., resolution_r=5.0, max_r=30.0, time_threshold=5.0)
-        defenseMetric = Metrics.DefenderFrameTimeToArrive(assets, defenders, attackers, time_threshold=8.0)
+        defenseMetric = Metrics.DefenderFrameTimeToArrive(assets, defenders, attackers, time_threshold=DEFENDER_TTA_CONTOUR)
     elif SIMULATION_TYPE == "convoy":
         #Metrics.DefenseMetric(assets, defenders, attackers)
         defenseMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=10.*np.pi/180.)
@@ -348,7 +352,8 @@ def main():
         defenseMetric.measureCurrentState()
 
         # update any overseers
-        overseer.updateDefense()
+        #overseer.updateDefense()
+        #overseer.updateAttack()
 
         if len(attackers) > 0:
             # build location arrays for defenders, attackers, and assets

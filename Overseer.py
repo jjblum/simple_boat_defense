@@ -8,6 +8,9 @@ import Polygon as poly
 import Polygon.Utils as polyUtils
 
 
+def wrapToPi(angle):
+    return (angle + np.pi) % (2 * np.pi) - np.pi
+
 
 class Team(object):
     """
@@ -89,33 +92,57 @@ class Overseer(object):
         self._assets = assets_in
 
     def updateAttack(self):
+        asset = self._assets[0]
+        ass_x = asset.state[0]
+        ass_y = asset.state[1]
+        for attacker in self._attackers:
+            if attacker.hasBeenTargeted:
+                distance_to_interception = np.sqrt(np.power(attacker.pointOfInterception[0] - attacker.state[0], 2) +
+                                                   np.power(attacker.pointOfInterception[1] - attacker.state[1], 2))
+                distance_to_asset = np.sqrt(np.power(ass_x - attacker.state[0], 2) + np.power(ass_y - attacker.state[1], 2))
+                if distance_to_asset > distance_to_interception and distance_to_interception < 10.0:
+                    # if you can't hit the asset before interception AND the defender is within X meters
+                    attacker.strategy = Strategies.TimedStrategySequence(attacker, [
+                        (Strategies.Circle_LOS, (attacker, [ass_x, ass_y], distance_to_asset-3.0, "ccw", attacker.design.maxSpeed)),
+                        (Strategies.MoveTowardAsset, (attacker,))
+                    ], [np.random.uniform(5.0, 30.0), 999.0])
         return
 
     def updateDefense(self):
         # e.g. if attackers get within a certain distance of the asset, assign the closest defender to intercept
-
         T = self._defenseMetric.timeThreshold
 
-        # update defenders that have removed their targets
         for defender in self._defenders:
             if defender.busy:
-                if defender.target not in self._attackers:
+                if defender.target not in self._attackers:  # update defenders that have removed their targets
                     defender.busy = False
+                    defender.target = None
                     defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 10.0, surgeVelocity=2.5)
 
         # where will attackers be in T seconds? assume straight line constant velocity
         for attacker in self._attackers:
-            if not attacker.hasBeenTargeted:
-                x0 = attacker.state[0]
-                y0 = attacker.state[1]
-                u = attacker.state[2]
-                th = attacker.state[4]
-                thdot = attacker.state[5]
-                x1 = x0 + u*np.cos(th)*T
-                y1 = y0 + u*np.sin(th)*T
-                #r = np.sqrt(np.power(x1 - x0, 2) + np.power(y1 - y0, 2))
-                #x1 += thdot*r*np.cos(th + np.pi/2.)*T
-                #y1 += thdot*r*np.sin(th + np.pi/2.)*T
+            x0 = attacker.state[0]
+            y0 = attacker.state[1]
+            u = attacker.state[2]
+            th = wrapToPi(attacker.state[4])
+            thdot = attacker.state[5]
+            x1 = x0 + u*np.cos(th)*T
+            y1 = y0 + u*np.sin(th)*T
+            #r = np.sqrt(np.power(x1 - x0, 2) + np.power(y1 - y0, 2))
+            #x1 += thdot*r*np.cos(th + np.pi/2.)*T
+            #y1 += thdot*r*np.sin(th + np.pi/2.)*T
+
+            if attacker.hasBeenTargeted:
+                # determine if target is not on an intercept course anymore
+                if np.abs(th - np.arctan2(attacker.pointOfInterception[1] - y0, attacker.pointOfInterception[0] - x0)) > np.deg2rad(15.0):
+                    attacker.hasBeenTargeted = False
+                    attacker.targetedBy.busy = False
+                    attacker.targetedBy.strategy = Strategies.Circle_LOS(attacker.targetedBy, [0., 0.], 10.0, surgeVelocity=2.5)
+                    #attacker.targetedBy.strategy = Strategies.DoNothing(attacker.targetedBy)
+                    attacker.targetedBy = None
+
+
+            if not attacker.hasBeenTargeted:  # want to check if the re-intercept if statemenet caught anything
                 # check if this is in any defender polygons
                 defenders_who_can_intercept = list()
                 defenders_who_are_not_busy = list()
@@ -130,20 +157,27 @@ class Overseer(object):
                             defenders_who_are_not_busy.append(defender)
 
                 # assign best defender
-                if defenders_who_can_intercept != []:
+                if len(defenders_who_can_intercept) > 0:
                     # sorted defenders
                     sorted_defenders = [defenders_who_can_intercept[d] for d in np.argsort(difficulty_of_defense)]
                     for defender in sorted_defenders:
-                        if defender in defenders_who_are_not_busy:
-                            defender.strategy = Strategies.DestinationOnly(defender, [copy.deepcopy(x1), copy.deepcopy(y1)])
+                        if defender in defenders_who_are_not_busy:  # currently only defenders that aren't busy can intercept this attacker
+                            #defender.strategy = Strategies.StrategySequence(defender, [
+                            #    (Strategies.PointAtLocation, (defender, [copy.deepcopy(x1), copy.deepcopy(y1)])),
+                            #    (Strategies.DestinationOnly, (defender, [copy.deepcopy(x1), copy.deepcopy(y1)]))
+                            #])
+                            defender.strategy = Strategies.DestinationOnlyExecutor(defender, [copy.deepcopy(x1), copy.deepcopy(y1)])
                             defender.busy = True
                             defender.target = attacker
+                            defender.pointOfInterception = [copy.deepcopy(x1), copy.deepcopy(y1)]
                             attacker.hasBeenTargeted = True
+                            attacker.targetedBy = defender
+                            attacker.pointOfInterception = [copy.deepcopy(x1), copy.deepcopy(y1)]
                             break
-                else:
-                    if np.sqrt(np.power(x1 - self.assets[0].state[0], 2) + np.power(self.assets[0].state[1], 2)) < 10.0:
+                #else:
+                    #if np.sqrt(np.power(x1 - self.assets[0].state[0], 2) + np.power(self.assets[0].state[1], 2)) < 10.0:
                         #print "WARNING: no defenders can intercept an attacker!"
-                        None
+                        #None
 
 
 
