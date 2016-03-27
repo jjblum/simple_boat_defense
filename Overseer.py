@@ -96,6 +96,13 @@ class Overseer(object):
 
         T = self._defenseMetric.timeThreshold
 
+        # update defenders that have removed their targets
+        for defender in self._defenders:
+            if defender.busy:
+                if defender.target not in self._attackers:
+                    defender.busy = False
+                    defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 10.0, surgeVelocity=2.5)
+
         # where will attackers be in T seconds? assume straight line constant velocity
         for attacker in self._attackers:
             if not attacker.hasBeenTargeted:
@@ -130,11 +137,13 @@ class Overseer(object):
                         if defender in defenders_who_are_not_busy:
                             defender.strategy = Strategies.DestinationOnly(defender, [copy.deepcopy(x1), copy.deepcopy(y1)])
                             defender.busy = True
+                            defender.target = attacker
                             attacker.hasBeenTargeted = True
                             break
                 else:
                     if np.sqrt(np.power(x1 - self.assets[0].state[0], 2) + np.power(self.assets[0].state[1], 2)) < 10.0:
-                        print "WARNING: no defenders can intercept an attacker!"
+                        #print "WARNING: no defenders can intercept an attacker!"
+                        None
 
 
 

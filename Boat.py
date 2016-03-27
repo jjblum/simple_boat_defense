@@ -66,6 +66,8 @@ class Boat(object):
         self._TTAPolygon = None  # time-to-arrive polygon object
         self._busy = False  # a flag that prevents another strategy from being assigned
         self._hasBeenTargeted = False  # a flag for attackers only. If a defender has been assigned to intercept, this is true.
+        self._target = None  # the boat's current target agent
+
         Boat.idCount += 1
 
     @property
@@ -223,6 +225,14 @@ class Boat(object):
     @hasBeenTargeted.setter
     def hasBeenTargeted(self, hasBeenTargeted_in):
         self._hasBeenTargeted = hasBeenTargeted_in
+
+    @property
+    def target(self):
+        return self._target
+
+    @target.setter
+    def target(self, target_in):
+        self._target = target_in
 
     def __str__(self):
         return "Boat {ID}: {T} at X = {X}, Y = {Y}, TH = {TH}".format(ID=self.uniqueID,

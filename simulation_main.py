@@ -20,9 +20,10 @@ PLOT_METRIC = False
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
 BOAT_COUNT = 8
-ATTACKER_COUNT = 2
-MAX_DEFENDERS_PER_RING = np.arange(8.0, 100.0, 2.0)
-RADII_OF_RINGS = np.arange(8.0, 600.0, 4.0)
+ATTACKER_COUNT = 4
+print "{} ATTACKERS, {} DEFENDERS".format(ATTACKER_COUNT, BOAT_COUNT - 1 - ATTACKER_COUNT)
+MAX_DEFENDERS_PER_RING = np.arange(10.0, 100.0, 2.0)
+RADII_OF_RINGS = np.arange(10.0, 600.0, 5.0)
 ATTACKER_REMOVAL_DISTANCE = 1.0
 ASSET_REMOVAL_DISTANCE = 1.0
 # TODO - tune this probability or figure out how to treat an interaction as a single interaction (perhaps spawn an object tracking the pairwise interaction)
@@ -205,7 +206,7 @@ def formDefenderRings(defenders):
 def randomAttackers(attackers):
     # attackers always start at some uniform random polar location, fixed radius 30
     for b in attackers:
-        radius = np.random.uniform(30., 40.)
+        radius = np.random.uniform(40., 80.)
         angle = np.random.uniform(0.0, 2*math.pi, 2)
         x = radius*math.cos(angle[0])
         y = radius*math.sin(angle[0])
@@ -249,14 +250,14 @@ def initialStrategy(assets, defenders, attackers, type="static_ring"):
             #    b.strategy = Strategies.MoveToClosestAttacker(b)
             #else:
             #    None
-            b.strategy = Strategies.Circle_LOS(b, [0., 0.], 9.0, surgeVelocity=2.5)
+            b.strategy = Strategies.Circle_LOS(b, [0., 0.], 10.0, surgeVelocity=2.5)
             #b.strategy = Strategies.MoveToClosestAttacker(b)
         for b in attackers:
             #b.strategy = Strategies.MoveTowardAsset(b, 1.0)
             b.strategy = Strategies.TimedStrategySequence(b, [
                 (Strategies.DoNothing, (b,)),
                 (Strategies.MoveTowardAsset, (b,))
-            ], [6.0, 1000.0])
+            ], [np.random.uniform(0.0, 20.0), 1000.0])
             None
     elif type == "convoy":
         for b in assets:
