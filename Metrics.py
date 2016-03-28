@@ -55,7 +55,7 @@ class IntrustionRatio(DefenseMetric):
 
 
 class DefenderFrameTimeToArrive(DefenseMetric):
-    def __init__(self, assets, defenders, attackers, time_threshold=5.0):
+    def __init__(self, assets, defenders, attackers, time_threshold=[5.0, 10.0, 15.0]):
         super(DefenderFrameTimeToArrive, self).__init__(assets, defenders, attackers)
         self._time_threshold = time_threshold
         self._thCoeff = 2.54832785865
@@ -72,52 +72,56 @@ class DefenderFrameTimeToArrive(DefenseMetric):
         NTH = th.shape[0]
         R = np.zeros((ND, NTH))  # radius that matches the time threshold
 
+
         for i in range(ND):
             defender = self._defenders[i]
+            defender.TTAPolygon = list()
+            defender.TTAData = list()
             x = defender.state[0]
             y = defender.state[1]
             u0 = defender.state[2]
             uid = defender.uniqueID
             heading = defender.state[4]
-            R[i, :] = 1./self._rCoeff*(self._T - self._thCoeff*th - self._u0Coeff*u0)
-            R[R < 0.] = 0.
-
-            bodyFrameData = np.row_stack((R[i, :]*np.cos(th), R[i, :]*np.sin(th), np.ones((1, NTH))))
-
-            # mirror image the other side and invert y
-            bodyFrameDataFlipped = np.fliplr(copy.deepcopy(bodyFrameData[:, 1:-1]))
-            bodyFrameDataFlipped[1, :] *= -1.
-            bodyFrameData = np.column_stack((bodyFrameData, bodyFrameDataFlipped))
-
-            # transform from body frame into world frame
             transform = np.array([[np.cos(heading), -np.sin(heading), x], [np.sin(heading), np.cos(heading), y], [0., 0., 1.]])
-            worldFrameData = np.dot(transform, bodyFrameData)
-            worldFrameData = worldFrameData[:2, :]  # remove extra 1's from homogenous transform
-            # need to create a tuple of (x,y) 2-tuples to generate a polygon object. Start by appending to a list.
-            worldFrameList = list()
-            for j in range(worldFrameData.shape[1]):
-                worldFrameList.append((worldFrameData[0, j], worldFrameData[1, j]))
-            worldFrameTuple = tuple(worldFrameList)
-            self._polygons[uid] = polyUtils.prunePoints(polyUtils.Polygon(worldFrameTuple))  # remove any redundant points
-            if u0 > 1.0 and self._T < 8.9:
-                # defender with forward velocity can't get back to where it started faster than 8.9 seconds
-                # for simplicity, just cut out the entire 3 meter circle where the plane fit for TTA breaks down
-                #R[i, np.where(R[i, :] < 3.0)] = 3.0
-                self._polygons[uid] -= polyShapes.Circle(radius=3.0, center=(x, y))
-            defender.TTAPolygon = self._polygons[uid]
-            defender.TTAData = np.array(polyUtils.pointList(self._polygons[uid]))
-            defender.TTAData = np.row_stack((defender.TTAData, defender.TTAData[0, :]))
+            for T in self._T:
 
-        # Now combine the defender polygons into a single coverage polygon to simplify asset frame stuff
-        one_defender_polygon = self._defenders[0].TTAPolygon
-        for i in range(1, ND):
-            one_defender_polygon += self._defenders[i].TTAPolygon
-        boundingBox = one_defender_polygon.boundingBox()
-        #outer_contour = np.array(one_defender_polygon.contour(0))
-        #inner_contour = np.array(one_defender_polygon.contour(1))
-        th = np.deg2rad(np.arange(0.0, 360.0+0.001, 10.0))
-        #for th_ in th:
-            # find farthest point that is in the polygon
+                R[i, :] = 1./self._rCoeff*(T - self._thCoeff*th - self._u0Coeff*u0)
+                R[R < 0.] = 0.
+                bodyFrameData = np.row_stack((R[i, :]*np.cos(th), R[i, :]*np.sin(th), np.ones((1, NTH))))
+                # mirror image the other side and invert y
+                bodyFrameDataFlipped = np.fliplr(copy.deepcopy(bodyFrameData[:, 1:-1]))
+                bodyFrameDataFlipped[1, :] *= -1.
+                bodyFrameData = np.column_stack((bodyFrameData, bodyFrameDataFlipped))
+
+                # transform from body frame into world frame
+                worldFrameData = np.dot(transform, bodyFrameData)
+                worldFrameData = worldFrameData[:2, :]  # remove extra 1's from homogenous transform
+                # need to create a tuple of (x,y) 2-tuples to generate a polygon object. Start by appending to a list.
+                worldFrameList = list()
+                for j in range(worldFrameData.shape[1]):
+                    worldFrameList.append((worldFrameData[0, j], worldFrameData[1, j]))
+                worldFrameTuple = tuple(worldFrameList)
+                self._polygons[uid] = polyUtils.prunePoints(polyUtils.Polygon(worldFrameTuple))  # remove any redundant points
+                if u0 > 1.0 and self._T < 8.9:
+                    # defender with forward velocity can't get back to where it started faster than 8.9 seconds
+                    # for simplicity, just cut out the entire 3 meter circle where the plane fit for TTA breaks down
+                    #R[i, np.where(R[i, :] < 3.0)] = 3.0
+                    self._polygons[uid] -= polyShapes.Circle(radius=3.0, center=(x, y))
+                defender.TTAPolygon.append(self._polygons[uid])
+                TTAData = np.array(polyUtils.pointList(self._polygons[uid]))
+                defender.TTAData.append(np.row_stack((TTAData, TTAData[0, :])))
+
+            # Now combine the defender polygons into a single coverage polygon to simplify asset frame stuff
+            #one_defender_polygon = self._defenders[0].TTAPolygon
+            #for i in range(1, ND):
+            #    one_defender_polygon += self._defenders[i].TTAPolygon
+            #boundingBox = one_defender_polygon.boundingBox()
+            ##outer_contour = np.array(one_defender_polygon.contour(0))
+            ##inner_contour = np.array(one_defender_polygon.contour(1))
+            #th = np.deg2rad(np.arange(0.0, 360.0+0.001, 10.0))
+            ##for th_ in th:
+            #    # find farthest point that is in the polygon
+            #asdf = 0
 
 
 

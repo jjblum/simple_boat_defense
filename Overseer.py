@@ -119,6 +119,7 @@ class Overseer(object):
                     defender.target = None
                     defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 10.0, surgeVelocity=2.5)
 
+
         # where will attackers be in T seconds? assume straight line constant velocity
         for attacker in self._attackers:
             x0 = attacker.state[0]
@@ -126,8 +127,8 @@ class Overseer(object):
             u = attacker.state[2]
             th = wrapToPi(attacker.state[4])
             thdot = attacker.state[5]
-            x1 = x0 + u*np.cos(th)*T
-            y1 = y0 + u*np.sin(th)*T
+            x1 = x0 + u*np.cos(th)*np.array(T)
+            y1 = y0 + u*np.sin(th)*np.array(T)
             #r = np.sqrt(np.power(x1 - x0, 2) + np.power(y1 - y0, 2))
             #x1 += thdot*r*np.cos(th + np.pi/2.)*T
             #y1 += thdot*r*np.sin(th + np.pi/2.)*T
@@ -137,8 +138,9 @@ class Overseer(object):
                 if np.abs(th - np.arctan2(attacker.pointOfInterception[1] - y0, attacker.pointOfInterception[0] - x0)) > np.deg2rad(15.0):
                     attacker.hasBeenTargeted = False
                     attacker.targetedBy.busy = False
-                    attacker.targetedBy.strategy = Strategies.Circle_LOS(attacker.targetedBy, [0., 0.], 10.0, surgeVelocity=2.5)
+                    #attacker.targetedBy.strategy = Strategies.Circle_LOS(attacker.targetedBy, [0., 0.], 10.0, surgeVelocity=2.5)
                     #attacker.targetedBy.strategy = Strategies.DoNothing(attacker.targetedBy)
+                    attacker.targetedBy.strategy = Strategies.Circle_Tracking(attacker.targetedBy, [0., 0.], attacker, 0.5)
                     attacker.targetedBy = None
 
 
@@ -148,13 +150,23 @@ class Overseer(object):
                 defenders_who_are_not_busy = list()
                 difficulty_of_defense = list()  # how difficult it will be to intercept
                 for defender in self._defenders:
-                    polygon = defender.TTAPolygon
-                    if polygon.isInside(x1, y1) and np.abs(thdot) < np.deg2rad(1.0):  # attacker is on a straight line
-                        defenders_who_can_intercept.append(defender)
-                        heading_to_intercept = np.arctan2(y1 - defender.state[1], x1 - defender.state[0])
-                        difficulty_of_defense.append(np.abs(defender.state[4] - heading_to_intercept))
-                        if not defender.busy:
-                            defenders_who_are_not_busy.append(defender)
+                    polygons = defender.TTAPolygon
+                    for t in range(len(polygons)):
+                        polygon = polygons[t]
+                        x1_ = x1[t]
+                        y1_ = y1[t]
+                        # if intercept can happen any time > TTA, then this defender can intercept
+                        canIntercept = False
+                        #TODO: determine if for any time > contourTTA the attacker's projection will be in the contour
+
+                        if polygon.isInside(x1_, y1_) and np.abs(thdot) < np.deg2rad(1.0):  # attacker is on a straight line
+                            defenders_who_can_intercept.append(defender)
+                            heading_to_intercept = np.arctan2(y1_ - defender.state[1], x1_ - defender.state[0])
+                            difficulty_of_defense.append(np.abs(defender.state[4] - heading_to_intercept))
+                            if not defender.busy:
+                                defenders_who_are_not_busy.append(defender)
+                                defender.pointOfInterception = [x1_, y1_]
+                                break
 
                 # assign best defender
                 if len(defenders_who_can_intercept) > 0:
@@ -166,13 +178,15 @@ class Overseer(object):
                             #    (Strategies.PointAtLocation, (defender, [copy.deepcopy(x1), copy.deepcopy(y1)])),
                             #    (Strategies.DestinationOnly, (defender, [copy.deepcopy(x1), copy.deepcopy(y1)]))
                             #])
-                            defender.strategy = Strategies.DestinationOnlyExecutor(defender, [copy.deepcopy(x1), copy.deepcopy(y1)])
+                            x1_ = defender.pointOfInterception[0]
+                            y1_ = defender.pointOfInterception[1]
+                            defender.strategy = Strategies.DestinationOnlyExecutor(defender, [copy.deepcopy(x1_), copy.deepcopy(y1_)])
                             defender.busy = True
                             defender.target = attacker
-                            defender.pointOfInterception = [copy.deepcopy(x1), copy.deepcopy(y1)]
+                            defender.pointOfInterception = [copy.deepcopy(x1_), copy.deepcopy(y1_)]
                             attacker.hasBeenTargeted = True
                             attacker.targetedBy = defender
-                            attacker.pointOfInterception = [copy.deepcopy(x1), copy.deepcopy(y1)]
+                            attacker.pointOfInterception = [copy.deepcopy(x1_), copy.deepcopy(y1_)]
                             break
                 #else:
                     #if np.sqrt(np.power(x1 - self.assets[0].state[0], 2) + np.power(self.assets[0].state[1], 2)) < 10.0:

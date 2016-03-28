@@ -821,7 +821,7 @@ class Circle_Tracking(Strategy):
         center_to_target = [target[0] - self._center[0], target[1] - self._center[1]]
         target_radius = np.sqrt(np.power(center_to_target[0], 2) + np.power(center_to_target[1], 2))
         radius = self._distance_fraction*target_radius
-        radius = max(5.0, radius)
+        # radius = max(5.0, radius)
         # use cross product to determine which direction the lookahead needs to be
         target_heading_line = [np.cos(self._target.state[4]), np.sin(self._target.state[4])]
         cross = np.cross(center_to_target, target_heading_line)

@@ -62,8 +62,8 @@ class Boat(object):
         self._strategy = Strategies.DoNothing(self)
         self._design = Designs.TankDriveDesign()
         self._plotData = None  # [x, y] data used to display current actions
-        self._TTAData = None  # time-to-arrive array
-        self._TTAPolygon = None  # time-to-arrive polygon object
+        self._TTAData = list()  # list of time-to-arrive arrays
+        self._TTAPolygon = list()  # list of time-to-arrive polygon objects
         self._busy = False  # a flag that prevents another strategy from being assigned
         self._hasBeenTargeted = False  # a flag for attackers only. If a defender has been assigned to intercept, this is true.
         self._target = None  # the boat's current target agent
