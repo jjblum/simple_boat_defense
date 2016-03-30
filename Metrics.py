@@ -8,6 +8,10 @@ import Polygon.Shapes as polyShapes
 import Designs
 
 
+def wrapToPi(angle):
+    return (angle + np.pi) % (2 * np.pi) - np.pi
+
+
 class DefenseMetric(object):
     __metaclass__ = abc.ABCMeta
 
@@ -18,6 +22,10 @@ class DefenseMetric(object):
         self._value = None  # the metric itself
         self._polarPlotData = None
         self._T = 0.0  # time threshold
+        self._thCoeff = 2.54832785865
+        self._rCoeff = 0.401354269952
+        self._u0Coeff = 0.0914788305811
+        self._ths = None
 
     @property
     def timeThreshold(self):
@@ -44,6 +52,10 @@ class DefenseMetric(object):
     def value(self, value_in):
         self._value = value_in
 
+    @property
+    def ths(self):
+        return self._ths
+
 
 # TODO - look at intrusion ratio (from that combined path following and obstacle avoidance paper) as a possible metric
 class IntrustionRatio(DefenseMetric):
@@ -55,12 +67,9 @@ class IntrustionRatio(DefenseMetric):
 
 
 class DefenderFrameTimeToArrive(DefenseMetric):
-    def __init__(self, assets, defenders, attackers, time_threshold=[5.0, 10.0, 15.0]):
+    def __init__(self, assets, defenders, attackers, time_threshold=[1.0, 5.0, 10.0]):
         super(DefenderFrameTimeToArrive, self).__init__(assets, defenders, attackers)
         self._time_threshold = time_threshold
-        self._thCoeff = 2.54832785865
-        self._rCoeff = 0.401354269952
-        self._u0Coeff = 0.0914788305811
         self._T = time_threshold
         self._polygons = dict()  # the polygons that represent TTA
 
@@ -124,12 +133,86 @@ class DefenderFrameTimeToArrive(DefenseMetric):
             #asdf = 0
 
 
+class MinimumTTARings(DefenseMetric):
+    def __init__(self, assets, defenders, attackers, radii=[5.0, 10.0, 20.0, 40.0], resolution_th=1.*np.pi/180.0):
+        super(MinimumTTARings, self).__init__(assets, defenders, attackers)
+        self._radii = radii
+        self._ths = self._ths = np.arange(0, 2*np.pi+0.001, resolution_th)
+        self._NR = len(radii)
+        self._NTH = self._ths.shape[0]
+        self._ND = len(defenders)
+        self._R = None
+        self._TH = None
+        self._polarGrid = None
+        self._baseCartesianGrid = None
+        self._cartesianGrid = None
+        self.createPolarGrid()
+        self.createCartesianGrid()
+        self._minTTA_dict = dict()
+
+    def radii(self):
+        return self._radii
+
+    def minTTA(self):
+        return self._minTTA_dict
+
+    def createPolarGrid(self):
+        TH, R = np.meshgrid(self._ths, self._radii)
+        self._polarGrid = np.column_stack((np.ravel(R), np.ravel(TH)))  # used to set up cartesian grid
+
+    def createCartesianGrid(self):
+        self._baseCartesianGrid = np.column_stack((np.multiply(self._polarGrid[:, 0], np.cos(self._polarGrid[:, 1])),
+                                                   np.multiply(self._polarGrid[:, 0], np.sin(self._polarGrid[:, 1]))))
+
+    def cartesianGridUpdate(self, asset):
+        self._cartesianGrid = np.column_stack((self._baseCartesianGrid[:, 0] + asset.state[0],
+                                               self._baseCartesianGrid[:, 1] + asset.state[1]))
+        # cartesianGrid is NR*NTH x 2
+        # It holds r constant for all theta, then incrememnts r
+
+    def measureCurrentState(self):
+        self.cartesianGridUpdate(self._assets[0])
+        ND = self._ND
+        NG = self._cartesianGrid.shape[0]
+        NTH = self._NTH
+        NR = self._NR
+        defenders_X = np.zeros((ND, 2))
+        defenders_th = np.zeros((ND,))
+        defender_u = np.zeros((ND,))
+        for i in range(ND):
+            defender = self._defenders[i]
+            defenders_X[i, 0] = defender.state[0]
+            defenders_X[i, 1] = defender.state[1]
+            defender_u[i] = defender.state[2]
+            defenders_th[i] = defender.state[4]
+
+        gridx, defx = np.meshgrid(self._cartesianGrid[:, 0], defenders_X[:, 0])
+        gridy, defy = np.meshgrid(self._cartesianGrid[:, 1], defenders_X[:, 1])
+        x_pairs = np.column_stack((np.ravel(defx), np.ravel(gridx)))
+        y_pairs = np.column_stack((np.ravel(defy), np.ravel(gridy)))
+        # each NG rows are for a single defender
+        dx = x_pairs[:, 1] - x_pairs[:, 0]
+        dy = y_pairs[:, 1] - y_pairs[:, 0]
+        R = np.sqrt(np.power(dx, 2) + np.power(dy, 2))
+        global_angle = np.arctan2(dy, dx)
+        global_angle[global_angle < 0.] += 2*np.pi
+        defenders_th[defenders_th < 0.] += 2*np.pi
+        local_angle = global_angle - np.repeat(defenders_th, NG, axis=0)  # the TTA model only uses positive theta!
+        local_angle = np.abs(wrapToPi(local_angle))
+        TTA = self._thCoeff*local_angle + self._rCoeff*R + self._u0Coeff*np.repeat(defender_u, NG, axis=0)
+        # remember, each NG rows are for a single defender -- TTA shape is (ND*NG,) = (ND*NTH*NR,)
+        # reshape and find minimum over the defenders for each grid point
+        TTA_by_defender = np.reshape(TTA, (ND, NR, NTH))
+        minTTA = np.min(TTA_by_defender, axis=0)
+        for i in range(minTTA.shape[0]):
+            self._minTTA_dict[self._radii[i]] = minTTA[i, :]
 
 
 
 
+"""
 class StaticRingMinimumTimeToArrive(DefenseMetric):
-    """
+
         Calculate the minimum time to arrive for any defender in a polar grid around the asset
         i.e. for each location, calculate the time to arrive of all the defenders, keeping the shortest arrival time
         Contours of distance can be displayed for any desired arrival time.
@@ -148,7 +231,7 @@ class StaticRingMinimumTimeToArrive(DefenseMetric):
                        In this simulation, rotation in place will typically be faster than traveling around a circle.
                        Therefore, for simplicity, this will be reduced to a simple estimate of rotate-in-place time
             3) time to travel at top speed to reach the goal
-    """
+
     def __init__(self, assets, defenders, attackers, resolution_r=5.0, resolution_th=15.*np.pi/180.0, max_r=30.0, time_threshold=5.0):
         super(StaticRingMinimumTimeToArrive, self).__init__(assets, defenders, attackers)
         self._timeThreshold = time_threshold
@@ -286,3 +369,4 @@ class StaticRingMinimumTimeToArrive(DefenseMetric):
         x = asset.state[0]
         y = asset.state[1]
         self._cartesianGrid = np.column_stack((self._baseCartesianGrid[:, 0] + x, self._baseCartesianGrid[:, 1] + y))
+"""

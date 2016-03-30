@@ -6,6 +6,7 @@ import Strategies
 import Metrics
 import Polygon as poly
 import Polygon.Utils as polyUtils
+import matplotlib.pyplot as plt
 
 
 def wrapToPi(angle):
@@ -91,6 +92,10 @@ class Overseer(object):
     def assets(self, assets_in):
         self._assets = assets_in
 
+    def update(self):
+        self.updateDefense()
+        self.updateAttack()
+
     def updateAttack(self):
         asset = self._assets[0]
         ass_x = asset.state[0]
@@ -113,18 +118,19 @@ class Overseer(object):
         T = self._defenseMetric.timeThreshold
 
         for defender in self._defenders:
-            if defender.busy:
-                if defender.target not in self._attackers:  # update defenders that have removed their targets
-                    defender.busy = False
-                    defender.target = None
-                    defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 10.0, surgeVelocity=2.5)
+            if defender.target not in self._attackers:  # update defenders that have removed their targets
+                defender.busy = False
+                defender.target = None
+                defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 10.0, surgeVelocity=2.5)
+
+        # TODO - need a simple interception alternative for when the boats are close and an interception can happen easily
 
 
         # where will attackers be in T seconds? assume straight line constant velocity
         for attacker in self._attackers:
             x0 = attacker.state[0]
             y0 = attacker.state[1]
-            u = attacker.state[2]
+            u = np.round(attacker.state[2], 3)
             th = wrapToPi(attacker.state[4])
             thdot = attacker.state[5]
             x1 = x0 + u*np.cos(th)*np.array(T)
@@ -135,13 +141,15 @@ class Overseer(object):
 
             if attacker.hasBeenTargeted:
                 # determine if target is not on an intercept course anymore
-                if np.abs(th - np.arctan2(attacker.pointOfInterception[1] - y0, attacker.pointOfInterception[0] - x0)) > np.deg2rad(15.0):
-                    attacker.hasBeenTargeted = False
-                    attacker.targetedBy.busy = False
-                    #attacker.targetedBy.strategy = Strategies.Circle_LOS(attacker.targetedBy, [0., 0.], 10.0, surgeVelocity=2.5)
-                    #attacker.targetedBy.strategy = Strategies.DoNothing(attacker.targetedBy)
-                    attacker.targetedBy.strategy = Strategies.Circle_Tracking(attacker.targetedBy, [0., 0.], attacker, 0.5)
-                    attacker.targetedBy = None
+                if type(attacker.targetedBy.strategy) != Strategies.MoveTowardBoat:
+                    if np.abs(th - np.arctan2(attacker.pointOfInterception[1] - y0, attacker.pointOfInterception[0] - x0)) > np.deg2rad(15.0):
+                        attacker.hasBeenTargeted = False
+                        attacker.targetedBy.busy = False
+                        attacker.targetedBy.strategy = Strategies.Circle_Tracking(attacker.targetedBy, [0., 0.], attacker, radius_growth_rate=0.25)
+                        attacker.targetedBy = None
+                    else:
+                        # TODO - update the intercept ?
+                        None
 
 
             if not attacker.hasBeenTargeted:  # want to check if the re-intercept if statemenet caught anything
@@ -153,12 +161,32 @@ class Overseer(object):
                     polygons = defender.TTAPolygon
                     for t in range(len(polygons)):
                         polygon = polygons[t]
+
+                        #TODO: determine if for any time > contourTTA the attacker's projection will be in the contour
+                        T_ = T[t]
+                        #polygon_points = np.array(polyUtils.pointList(polygon))
+                        #polygon_points = np.row_stack((polygon_points, polygon_points[0, :]))  # concatenate last point
+                        #diff_list = np.diff(polygon_points, axis=0)
+                        #polygon_segment_lengths = np.sqrt(np.power(diff_list[:, 0], 2) + np.power(diff_list[:, 1], 2))
+                        #polygon_phis = np.arctan2(diff_list[:,1], diff_list[:, 0])
+                        #polygon_points = polygon_points[:-1, :]  # remove that concatenated point
+                        #for i in range(polygon_points.shape[0]):
+                        #    A = np.array([[np.cos(polygon_phis[i]), -u*np.cos(th)], [np.sin(polygon_phis[i]), -u*np.sin(th)]])
+                        #    b = np.array([[x0 - polygon_points[i, 0]],[y0 - polygon_points[i, 1]]])
+                        #    alpha_dt = np.squeeze(np.dot(np.linalg.inv(A), b))
+                        #    if alpha_dt[0] >= 0. and alpha_dt[0] <= polygon_segment_lengths[i]:
+                        #        # feasible intercept on this contour line segment
+                        #        if alpha_dt[1] >= T_:
+                        #            # can intercept b/c the attacker will arrive after the defender can reach this point
+                        #            plt.plot(polygon_points[:,0], polygon_points[:,1], 'r-')
+                        #            plt.plot(polygon_points[i,0], polygon_points[i,1], 'ms')
+                        #            plt.plot([polygon_points[i,0], polygon_points[i,0] + alpha_dt[0]*np.cos(polygon_phis[i])], [polygon_points[i,1], polygon_points[i,1] + alpha_dt[0]*np.sin(polygon_phis[i])], 'm-', linewidth=3.0)
+                        #            plt.plot([x0,x0+alpha_dt[1]*u*np.cos(th)],[y0,y0+alpha_dt[1]*u*np.sin(th)],'b-')
+                        #            #plt.show()
+                        #            break
+
                         x1_ = x1[t]
                         y1_ = y1[t]
-                        # if intercept can happen any time > TTA, then this defender can intercept
-                        canIntercept = False
-                        #TODO: determine if for any time > contourTTA the attacker's projection will be in the contour
-
                         if polygon.isInside(x1_, y1_) and np.abs(thdot) < np.deg2rad(1.0):  # attacker is on a straight line
                             defenders_who_can_intercept.append(defender)
                             heading_to_intercept = np.arctan2(y1_ - defender.state[1], x1_ - defender.state[0])
@@ -166,6 +194,7 @@ class Overseer(object):
                             if not defender.busy:
                                 defenders_who_are_not_busy.append(defender)
                                 defender.pointOfInterception = [x1_, y1_]
+                                print "Defender {} can intercept using the {} TTA contour".format(defender.uniqueID, T_)
                                 break
 
                 # assign best defender

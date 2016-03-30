@@ -16,11 +16,11 @@ import Metrics
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
 WITH_PLOTTING = True
 PLOT_MAIN = True
-PLOT_METRIC = False
+PLOT_METRIC = True
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
-BOAT_COUNT = 5
-ATTACKER_COUNT = 1
+BOAT_COUNT = 8
+ATTACKER_COUNT = 3
 print "{} ATTACKERS, {} DEFENDERS".format(ATTACKER_COUNT, BOAT_COUNT - 1 - ATTACKER_COUNT)
 MAX_DEFENDERS_PER_RING = np.arange(10.0, 100.0, 2.0)
 RADII_OF_RINGS = np.arange(10.0, 600.0, 5.0)
@@ -54,7 +54,7 @@ if WITH_PLOTTING:
     fig.canvas.draw()
 
 
-def plotSystem(assets, defenders, attackers, defenseMetric, title_string, plot_time, real_time_zero):
+def plotSystem(assets, defenders, attackers, defenderFrameMetric, assetFrameMetric, title_string, plot_time, real_time_zero):
     # gather the X and Y locations of all boats
     defenders_x = [boat.state[0] for boat in defenders]
     attackers_x = [boat.state[0] for boat in attackers]
@@ -88,24 +88,24 @@ def plotSystem(assets, defenders, attackers, defenseMetric, title_string, plot_t
 
     if PLOT_METRIC:
         # plot the metric polar plot
-        max_r = np.max(defenseMetric.polarPlotData[:, 1])
-        min_r = np.min(defenseMetric.polarPlotData[:, 1])
-        avg_r = np.mean(defenseMetric.polarPlotData[:, 1])
         # TODO - get the polar plot to update its tickmarks or the maximum radius, because they aren't updating right now
+        max_r = max(assetFrameMetric.radii())
         ax_metric.set_rmax(max_r*2.0)
-        ax_metric.draw_artist(ax_metric.plot(defenseMetric.polarPlotData[:, 0],
-                                         defenseMetric.polarPlotData[:, 1], 'b-', linewidth=4.0)[0])
-        # TODO - convert defenders_x and defenders_y into x and y relative to the asset so they can be put into polar form
+        styles = ["r", "g", "b", "m", "c"]
+        minTTA = assetFrameMetric.minTTA()
+        keys = minTTA.keys()
+        for i in range(len(keys)):
+            ax_metric.draw_artist(ax_metric.plot(assetFrameMetric.ths, minTTA[keys[i]], styles[i], linewidth=4.0)[0])
         relative_x = defenders_x - mean_x
         relative_y = defenders_y - mean_y
         defenders_r = np.sqrt(np.power(relative_x, 2.) + np.power(relative_y, 2.))  # distance from asset to defender
         defenders_phi = np.arctan2(relative_y, relative_x)  # angle from asset to defender
         ax_metric.draw_artist(ax_metric.plot(defenders_phi, defenders_r, 'go', ms=14.0)[0])
 
-        # plot inscribed circle
-        ax_metric.draw_artist(ax_metric.plot(np.linspace(-np.pi, np.pi, 100), min_r*np.ones(100,), 'm-', linewidth=6.0)[0])
-        # plot mean circle
-        ax_metric.draw_artist(ax_metric.plot(np.linspace(-np.pi, np.pi, 100), avg_r*np.ones(100,), 'c--', linewidth=3.0)[0])
+        ## plot inscribed circle
+        #ax_metric.draw_artist(ax_metric.plot(np.linspace(-np.pi, np.pi, 100), min_r*np.ones(100,), 'm-', linewidth=6.0)[0])
+        ## plot mean circle
+        #ax_metric.draw_artist(ax_metric.plot(np.linspace(-np.pi, np.pi, 100), avg_r*np.ones(100,), 'c--', linewidth=3.0)[0])
 
     if PLOT_MAIN:
         defender_arrows = [pylab.arrow(defenders_x[j], defenders_y[j],
@@ -122,20 +122,20 @@ def plotSystem(assets, defenders, attackers, defenseMetric, title_string, plot_t
                         fc="b", ec="b", head_width=0.5, head_length=1.0) for j in range(len(assets_x))]
 
         # TODO - put this in the metric plot instead, of course
-        for d in defenders:
-            #if d.TTAData is not None:
-            thickness = 3.
-            for TTAData in d.TTAData:
-                ax_main.draw_artist(ax_main.plot(TTAData[:, 0], TTAData[:, 1], 'm-', linewidth=thickness)[0])
-                thickness -= 1.
+        #for d in defenders:
+        #    #if d.TTAData is not None:
+        #    thickness = 3.
+        #    for TTAData in d.TTAData:
+        #        ax_main.draw_artist(ax_main.plot(TTAData[:, 0], TTAData[:, 1], 'm-', linewidth=thickness)[0])
+        #        thickness -= 1.
         #        center = d.TTAPolygon.center()
         #        ax_main.draw_artist(ax_main.plot(center[0], center[1], 'ms')[0])
-        for a in attackers:
-            size = 14.
-            for T in defenseMetric.timeThreshold:
-                ax_main.draw_artist(ax_main.plot(a.state[0] + a.state[2]*np.cos(a.state[4])*T,
-                                                 a.state[1] + a.state[2]*np.sin(a.state[4])*T, 'mo', markersize=size)[0])
-                size -= 4.
+        #for a in attackers:
+        #    size = 14.
+        #    for T in defenderFrameMetric.timeThreshold:
+        #        ax_main.draw_artist(ax_main.plot(a.state[0] + a.state[2]*np.cos(a.state[4])*T,
+        #                                         a.state[1] + a.state[2]*np.sin(a.state[4])*T, 'mo', markersize=size)[0])
+        #        size -= 4.
 
 
         for boat in assets + defenders + attackers:
@@ -182,7 +182,11 @@ def plotSystem(assets, defenders, attackers, defenseMetric, title_string, plot_t
         fig.canvas.blit(ax_main.bbox)
 
     if PLOT_METRIC:
-        metric_title_text = ax_metric.text(0.5, 0.95, "{:.0f}s contour".format(defenseMetric._timeThreshold),
+        metric_string = "R = "
+        for radius in assetFrameMetric.radii():
+            metric_string = metric_string + "{:.1f}, ".format(radius)
+        metric_string = metric_string[:-2]  # remove last comma
+        metric_title_text = ax_metric.text(0.5, 0.95, metric_string,
                                            horizontalalignment='center', verticalalignment='bottom',
                                            transform=ax_metric.transAxes, size=20)
         ax_metric.draw_artist(metric_title_text)
@@ -225,6 +229,10 @@ def initialPositions(assets, defenders, attackers, type="static_ring"):
     if type == "static_ring":
         formDefenderRings(defenders)
         randomAttackers(attackers)
+        #attackers[0].state[0] = 30.
+        #attackers[0].state[1] = 0.
+        #attackers[0].state[4] = np.pi
+        #attackers[0].state[2] = attackers[0].design.maxSpeed
 
     elif type == "convoy":
         formDefenderRings(defenders)
@@ -256,7 +264,7 @@ def initialStrategy(assets, defenders, attackers, type="static_ring"):
             #    b.strategy = Strategies.MoveToClosestAttacker(b)
             #else:
             #    None
-            b.strategy = Strategies.Circle_LOS(b, [0., 0.], np.random.uniform(5.0, 20.0), surgeVelocity=2.5)
+            b.strategy = Strategies.Circle_LOS(b, [0., 0.], np.random.uniform(10.0, 20.0), surgeVelocity=2.5)
             # b.strategy = Strategies.MoveToClosestAttacker(b)
             # b.strategy = Strategies.Circle_Tracking(b, [0., 0.], attackers[0], 0.25)
 
@@ -311,12 +319,16 @@ def main():
     # set up defense metric tools
     if SIMULATION_TYPE == "static_ring":
         #defenseMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=1.*np.pi/180., resolution_r=5.0, max_r=30.0, time_threshold=5.0)
-        defenseMetric = Metrics.DefenderFrameTimeToArrive(assets, defenders, attackers)
+        overseerMetric = Metrics.DefenderFrameTimeToArrive(assets, defenders, attackers)
     elif SIMULATION_TYPE == "convoy":
         #Metrics.DefenseMetric(assets, defenders, attackers)
-        defenseMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=10.*np.pi/180.)
+        overseerMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=10.*np.pi/180.)
 
-    overseer.defenseMetric = defenseMetric
+    overseer.defenseMetric = overseerMetric
+    plottingMetric = Metrics.MinimumTTARings(assets, defenders, attackers)
+    metrics = list()
+    metrics.append(overseerMetric)
+    metrics.append(plottingMetric)
 
     # move asset using ODE integration
     real_time_zero = time.time()
@@ -354,11 +366,11 @@ def main():
         step += 1
 
         # update any metrics
-        defenseMetric.measureCurrentState()
+        for m in metrics:
+            m.measureCurrentState()
 
         # update any overseers
-        overseer.updateDefense()
-        overseer.updateAttack()
+        overseer.update()
 
         if len(attackers) > 0:
             # build location arrays for defenders, attackers, and assets
@@ -405,7 +417,7 @@ def main():
         #        with respect to the asset in the center
 
         if WITH_PLOTTING:
-            plotSystem(assets, defenders, attackers, defenseMetric, SIMULATION_TYPE, t, real_time_zero)
+            plotSystem(assets, defenders, attackers, overseerMetric, plottingMetric, SIMULATION_TYPE, t, real_time_zero)
     print "Finished {} simulated seconds in {} real-time seconds".format(t,  time.time() - real_time_zero)
 
 if __name__ == '__main__':

@@ -515,6 +515,31 @@ class MoveTowardAsset(Strategy):
         self._strategy.idealState()
 
 
+class MoveTowardBoat(Strategy):
+    # nested strategy - uses DestinationOnly with the asset as the goal
+    def __init__(self, boat, target, positionThreshold=1.0):
+        super(MoveTowardBoat, self).__init__(boat)
+        self._target = target
+        self._strategy = DestinationOnly(boat, [self._target.state[0], self._target.state[1]], positionThreshold)  # the lower level nested strategy
+        self.controller = self._strategy.controller
+
+    @property  # need to override the standard controller property with the nested strategy's controller
+    def controller(self):
+        return self._strategy.controller
+
+    @controller.setter  # need to override the standard controller property with the nested strategy's controller
+    def controller(self, controller):
+        self._controller = controller
+
+    def updateFinished(self):  # need to override to get the finished status of the nested strategy!!!
+        self.strategy.updateFinished()
+        self.finished = self.strategy.finished
+
+    def idealState(self):
+        self._strategy.destinationState = [self._target.state[0], self._target.state[1]]
+        self._strategy.idealState()
+
+
 class Square(StrategySequence):
     # Move around the vertices of a square given its center and edge size.
     # User can specify which corner and rotation direction they want
@@ -803,16 +828,23 @@ class Circle_PID(Strategy):
 
 
 class Circle_Tracking(Strategy):
-    def __init__(self, boat, center, target_boat, distance_fraction):
+    def __init__(self, boat, center, target_boat, radius_growth_rate=1.0):
         super(Circle_Tracking, self).__init__(boat)
         self._boat = boat
         self._center = center
         self._target = target_boat
-        self._distance_fraction = distance_fraction
         self.controller = Controllers.LineOfSight(boat, driftDown=False)
         self._ths = np.linspace(-np.pi, np.pi, 100)
+        self.time = boat.time
+        self._tOld = boat.time
+        self._startingRadius = None
+        self._radius_growth_rate = radius_growth_rate
+        self._radius = None
 
     def idealState(self):
+        dt = self.boat.time - self._tOld
+        self._tOld = self.boat.time
+
         # angle of target with respect to center (projection on the circle)
         target = self._target.state
         target_th = np.arctan2(target[1] - self._center[1], target[0] - self._center[0])
@@ -820,24 +852,26 @@ class Circle_Tracking(Strategy):
         boatAngle = np.arctan2(dX[1], dX[0])
         center_to_target = [target[0] - self._center[0], target[1] - self._center[1]]
         target_radius = np.sqrt(np.power(center_to_target[0], 2) + np.power(center_to_target[1], 2))
-        radius = self._distance_fraction*target_radius
-        # radius = max(5.0, radius)
+        if self._radius is None:
+            self._radius = max(2.5, self.boat.distanceToPoint(self._center))
+        self._radius = min(target_radius, self._radius + dt*self._radius_growth_rate)
+
         # use cross product to determine which direction the lookahead needs to be
         target_heading_line = [np.cos(self._target.state[4]), np.sin(self._target.state[4])]
         cross = np.cross(center_to_target, target_heading_line)
         lookaheadAngle = target_th + np.sign(cross)*np.deg2rad(1.0)
-        lookaheadState = np.array([self._center[0] + radius*np.cos(lookaheadAngle),
-                                   self._center[1] + radius*np.sin(lookaheadAngle)])
+        lookaheadState = np.array([self._center[0] + self._radius*np.cos(lookaheadAngle),
+                                   self._center[1] + self._radius*np.sin(lookaheadAngle)])
         boatToLookahead = np.array([lookaheadState[0] - self.boat.state[0], lookaheadState[1] - self.boat.state[1]])
         boatToLookaheadAngle = np.arctan2(boatToLookahead[1], boatToLookahead[0])
 
         state = np.zeros((6,))
         phidot = self._target.state[2]/target_radius
-        state[2] = 1.1*radius*phidot
+        state[2] = 1.1*self._radius*phidot
         state[4] = boatToLookaheadAngle
         self.controller.idealState = state
         #self.boat.plotData = np.column_stack(([self.boat.state[0], lookaheadState[0]], [self.boat.state[1], lookaheadState[1]]))
-        self.boat.plotData = np.column_stack((self._center[0] + radius*np.cos(self._ths), self._center[1] + radius*np.sin(self._ths)))
+        self.boat.plotData = np.column_stack((self._center[0] + self._radius*np.cos(self._ths), self._center[1] + self._radius*np.sin(self._ths)))
 
 
 class DestinationOnlyExecutor(Executor):
