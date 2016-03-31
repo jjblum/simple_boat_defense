@@ -16,11 +16,11 @@ import Metrics
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
 WITH_PLOTTING = True
 PLOT_MAIN = True
-PLOT_METRIC = True
+PLOT_METRIC = False
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
-BOAT_COUNT = 8
-ATTACKER_COUNT = 3
+BOAT_COUNT = 5
+ATTACKER_COUNT = 2
 print "{} ATTACKERS, {} DEFENDERS".format(ATTACKER_COUNT, BOAT_COUNT - 1 - ATTACKER_COUNT)
 MAX_DEFENDERS_PER_RING = np.arange(10.0, 100.0, 2.0)
 RADII_OF_RINGS = np.arange(10.0, 600.0, 5.0)
@@ -274,7 +274,7 @@ def initialStrategy(assets, defenders, attackers, type="static_ring"):
             b.strategy = Strategies.TimedStrategySequence(b, [
                 (Strategies.Circle_LOS, (b, [0., 0.], b.distanceToBoat(assets[0]), b.design.maxSpeed)),
                 (Strategies.MoveTowardAsset, (b,))
-            ], [np.random.uniform(0.0, 20.0), 1000.0])
+            ], [np.random.uniform(0.0, 2.0), 1000.0])
             None
     elif type == "convoy":
         for b in assets:

@@ -1,9 +1,14 @@
 import numpy as np
 import math
+import copy
 import Strategies
 import Designs
 
 __author__ = 'jjb'
+
+
+def wrapToPi(angle):
+    return (angle + np.pi) % (2 * np.pi) - np.pi
 
 
 def ode(state, t, boat):
@@ -69,6 +74,7 @@ class Boat(object):
         self._target = None  # the boat's current target agent
         self._targetedBy = None  # if the boat has been targeted, this is the intercepting agent
         self._pointOfInterception = None  # the location where an interception is predicted to happen
+        self._evading = False
 
         Boat.idCount += 1
 
@@ -229,6 +235,14 @@ class Boat(object):
         self._hasBeenTargeted = hasBeenTargeted_in
 
     @property
+    def evading(self):
+        return self._evading
+
+    @evading.setter
+    def evading(self, evading_in):
+        self._evading = evading_in
+
+    @property
     def target(self):
         return self._target
 
@@ -260,10 +274,33 @@ class Boat(object):
                                                                       TH=self.state[4][0])
 
     def distanceToBoat(self, otherBoat):
-        return np.sqrt(np.power(self._state[0] - otherBoat.state[0], 2) + np.power(self._state[1] - otherBoat.state[1], 2))
+        point = [otherBoat.state[0], otherBoat.state[1]]
+        return self.distanceToPoint(point)
 
     def distanceToPoint(self, point):
         return np.sqrt(np.power(self._state[0] - point[0], 2) + np.power(self._state[1] - point[1], 2))
+
+    def globalAngleToBoat(self, otherBoat):
+        point = [otherBoat.state[0], otherBoat.state[1]]
+        return self.globalAngleToPoint(point)
+
+    def localAngleToBoat(self, otherBoat):
+        point = [otherBoat.state[0], otherBoat.state[1]]
+        return self.localAngeToPoint(point)
+
+    def globalAngleToPoint(self, point):
+        dx = point[0] - self._state[0]
+        dy = point[1] - self._state[1]
+        return np.arctan2(dy, dx)
+
+    def localAngeToPoint(self, point):
+        ga = self.globalAngleToPoint(self, point)
+        if ga < 0:
+            ga += 2*np.pi
+        a = copy.deepcopy(self._state[4])
+        if a < 0:
+            a += 2*np.pi
+        return wrapToPi(ga - a)
 
     def control(self):
         self.strategy.updateFinished()

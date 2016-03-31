@@ -394,12 +394,13 @@ class PointAtLocation(Strategy):
         self.controller.idealState = state
 
 
-class PointAtAsset(Strategy):
+class PointAtBoat(Strategy):
     # a strategy that just points the boat at the geometric mean of the assets
     # an example of a NESTED STRATEGY
-    def __init__(self, boat):
-        super(PointAtAsset, self).__init__(boat)
+    def __init__(self, boat, targetBoat):
+        super(PointAtBoat, self).__init__(boat)
         self._strategy = ChangeHeading(boat)  # the lower level nested strategy
+        self._target = targetBoat
         self.controller = self._strategy.controller
 
     @property  # need to override the standard controller property with the nested strategy's controller
@@ -414,20 +415,15 @@ class PointAtAsset(Strategy):
         self.strategy.updateFinished()
         self.finished = self.strategy.finished
 
-    def angleToAsset(self):
-        if len(self.assets) == 0:
-            # no asset to point at, do not change heading
-            return self.boat.state[4]
+    def angleToTarget(self):
         x = self.boat.state[0]
         y = self.boat.state[1]
-        assets_x = [b.state[0] for b in self.assets]
-        assets_y = [b.state[1] for b in self.assets]
-        asset_x = np.mean(assets_x)
-        asset_y = np.mean(assets_y)
-        return math.atan2(asset_y - y, asset_x - x)
+        target_x = self._target.state[0]
+        target_y = self._target.state[1]
+        return math.atan2(target_y - y, target_x - x)
 
     def idealState(self):
-        self._strategy.desiredHeading = self.angleToAsset()
+        self._strategy.desiredHeading = self.angleToTarget()
         return self._strategy.idealState()
 
 
@@ -853,7 +849,7 @@ class Circle_Tracking(Strategy):
         center_to_target = [target[0] - self._center[0], target[1] - self._center[1]]
         target_radius = np.sqrt(np.power(center_to_target[0], 2) + np.power(center_to_target[1], 2))
         if self._radius is None:
-            self._radius = max(2.5, self.boat.distanceToPoint(self._center))
+            self._radius = max(2.5, target_radius*0.5)
         self._radius = min(target_radius, self._radius + dt*self._radius_growth_rate)
 
         # use cross product to determine which direction the lookahead needs to be
