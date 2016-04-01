@@ -116,8 +116,7 @@ class Overseer(object):
         ass_y = asset.state[1]
         for attacker in self._attackers:
             if attacker.hasBeenTargeted and not attacker.evading:
-                distance_to_interception = np.sqrt(np.power(attacker.pointOfInterception[0] - attacker.state[0], 2) +
-                                                   np.power(attacker.pointOfInterception[1] - attacker.state[1], 2))
+                distance_to_interception = min(attacker.distanceToPoint(attacker.pointOfInterception), attacker.distanceToBoat(attacker.targetedBy))
                 distance_to_asset = np.sqrt(np.power(ass_x - attacker.state[0], 2) + np.power(ass_y - attacker.state[1], 2))
                 if distance_to_asset > distance_to_interception and distance_to_interception < 10.0:
                     # if you can't hit the asset before interception AND the defender is within X meters
@@ -132,7 +131,7 @@ class Overseer(object):
                     #    (Strategies.MoveTowardAsset, (attacker,))
                     #], [np.random.uniform(5.0, 30.0), 999.0])
             if attacker.evading:
-                if np.random.uniform(0., 1.) < 0.01:
+                if np.random.uniform(0., 1.) < 0.005:  # essentially assign a random time to the circling
                     attacker.evading = False
                     attacker.strategy = Strategies.MoveTowardAsset(attacker)
 
@@ -147,15 +146,14 @@ class Overseer(object):
                     defender.target.hasBeenTargeted = False
                     defender.target = None
                     defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 10.0, surgeVelocity=2.5)
-                else:
+                elif defender.pointOfInterception is not None:
                     phi = np.arctan2(defender.pointOfInterception[1] - defender.target.state[1], defender.pointOfInterception[0] - defender.target.state[0])
-                    if absoluteAngleDifference(defender.target.state[4], phi) > np.rad2deg(15.) or defender.target.state[2] < 0.1:
+                    if absoluteAngleDifference(defender.target.state[4], phi) > np.deg2rad(15.) or defender.target.state[2] < 0.1:
                         # attacker is no longer headed to the intercept point (either by heading or slowing down)
                         defender.busy = False
-                        defender.strategy = Strategies.Circle_Tracking(defender, [0., 0.], defender.target, radius_growth_rate=0.25)
+                        defender.strategy = Strategies.Circle_Tracking(defender, [0., 0.], defender.target, radius_growth_rate=0.3)
                         defender.target.hasBeenTargeted = False
                         defender.target.pointOfInterception = None
-                        defender.target = None
                         defender.pointOfInterception = None
 
         able_defenders = [defender for defender in self._defenders if not defender.busy]
@@ -217,8 +215,8 @@ class Overseer(object):
                     TTA_by_defender = np.reshape(TTA, (ND, NG))
 
                     ######
-                    REQUIRED_TIME_BUFFER = 3.0  # extra seconds!
-                    MAX_ALLOWABLE_INTERCEPT_DISTANCE = 10.0
+                    REQUIRED_TIME_BUFFER = 1.0  # extra seconds!
+                    MAX_ALLOWABLE_INTERCEPT_DISTANCE = 20.0
                     ######
                     able_to_intercept = np.logical_and(
                             (np.repeat(np.atleast_2d(fraction*t_impact), ND, axis=0) - TTA_by_defender) > REQUIRED_TIME_BUFFER,
