@@ -115,20 +115,27 @@ class Overseer(object):
         ass_x = asset.state[0]
         ass_y = asset.state[1]
         for attacker in self._attackers:
-            if attacker.hasBeenTargeted:
+            if attacker.hasBeenTargeted and not attacker.evading:
                 distance_to_interception = np.sqrt(np.power(attacker.pointOfInterception[0] - attacker.state[0], 2) +
                                                    np.power(attacker.pointOfInterception[1] - attacker.state[1], 2))
                 distance_to_asset = np.sqrt(np.power(ass_x - attacker.state[0], 2) + np.power(ass_y - attacker.state[1], 2))
                 if distance_to_asset > distance_to_interception and distance_to_interception < 10.0:
                     # if you can't hit the asset before interception AND the defender is within X meters
+                    attacker.evading = True
                     if np.random.uniform(0., 1.) < 0.5:
                         direction = "ccw"
                     else:
                         direction = "cw"
-                    attacker.strategy = Strategies.TimedStrategySequence(attacker, [
-                        (Strategies.Circle_LOS, (attacker, [ass_x, ass_y], distance_to_asset-3.0, direction, attacker.design.maxSpeed)),
-                        (Strategies.MoveTowardAsset, (attacker,))
-                    ], [np.random.uniform(5.0, 30.0), 999.0])
+                    attacker.strategy = Strategies.Circle_LOS(attacker, [ass_x, ass_y], distance_to_asset-3.0, direction, attacker.design.maxSpeed)
+                    #attacker.strategy = Strategies.TimedStrategySequence(attacker, [
+                    #    (Strategies.Circle_LOS, (attacker, [ass_x, ass_y], distance_to_asset-3.0, direction, attacker.design.maxSpeed)),
+                    #    (Strategies.MoveTowardAsset, (attacker,))
+                    #], [np.random.uniform(5.0, 30.0), 999.0])
+            if attacker.evading:
+                if np.random.uniform(0., 1.) < 0.01:
+                    attacker.evading = False
+                    attacker.strategy = Strategies.MoveTowardAsset(attacker)
+
         return
 
     def updateDefense(self):
@@ -150,8 +157,6 @@ class Overseer(object):
                         defender.target.pointOfInterception = None
                         defender.target = None
                         defender.pointOfInterception = None
-
-
 
         able_defenders = [defender for defender in self._defenders if not defender.busy]
         ND = len(able_defenders)
@@ -210,8 +215,15 @@ class Overseer(object):
                     TTA = self._thCoeff*local_angle + self._rCoeff*R + self._u0Coeff*np.repeat(defender_u, NG, axis=0)
                     # remember, each NG rows are for a single defender -- TTA shape is (ND*NG,)
                     TTA_by_defender = np.reshape(TTA, (ND, NG))
+
+                    ######
                     REQUIRED_TIME_BUFFER = 3.0  # extra seconds!
-                    able_to_intercept = (np.repeat(np.atleast_2d(fraction*t_impact), ND, axis=0) - TTA_by_defender) > REQUIRED_TIME_BUFFER
+                    MAX_ALLOWABLE_INTERCEPT_DISTANCE = 10.0
+                    ######
+                    able_to_intercept = np.logical_and(
+                            (np.repeat(np.atleast_2d(fraction*t_impact), ND, axis=0) - TTA_by_defender) > REQUIRED_TIME_BUFFER,
+                            np.repeat(np.atleast_2d(discrete_distances.T), ND, axis=0) < MAX_ALLOWABLE_INTERCEPT_DISTANCE
+                    )
                     defender_TTA_dict = dict()  # defender boat object: (where it can intercept, maximum distance from asset it can intercept)
                     max_intercept_distances = list()
                     for i in range(ND):
@@ -234,7 +246,6 @@ class Overseer(object):
                         # someone can intercept
                         defender_with_max_distance_index = np.argmax(np.array(max_intercept_distances))
                         defender_with_max_distance = able_defenders[defender_with_max_distance_index]
-                        MAX_ALLOWABLE_INTERCEPT_DISTANCE = 10.0
                         intercept_distace = min(MAX_ALLOWABLE_INTERCEPT_DISTANCE, max_intercept_distances[defender_with_max_distance_index])
                         intercept_fraction = 1. - intercept_distace/distance_to_asset
                         intercept_point = [x0 + intercept_fraction*t_impact*u*np.cos(th), y0 + intercept_fraction*t_impact*u*np.sin(th)]
@@ -245,11 +256,11 @@ class Overseer(object):
                         defender_with_max_distance.target = attacker
                         defender_with_max_distance.pointOfInterception = copy.deepcopy(intercept_point)
                         defender_with_max_distance.busy = True
-                        # defender_with_max_distance.strategy = Strategies.DestinationOnlyExecutor(defender_with_max_distance, copy.deepcopy(intercept_point))
                         defender_with_max_distance.strategy = Strategies.StrategySequence(defender_with_max_distance, [
-                            (Strategies.PointAtLocation, (defender_with_max_distance, defender.pointOfInterception)),
-                            (Strategies.DestinationOnly, (defender_with_max_distance, defender.pointOfInterception)),
-                            (Strategies.PointAtBoat, (defender_with_max_distance, attacker))
+                            (Strategies.PointAtLocation, (defender_with_max_distance, defender_with_max_distance.pointOfInterception)),
+                            (Strategies.DestinationOnly, (defender_with_max_distance, defender_with_max_distance.pointOfInterception)),
+                            (Strategies.PointAtBoat, (defender_with_max_distance, attacker)),
+                            (Strategies.MoveTowardBoat, (defender_with_max_distance, attacker))
                         ])
                         #print "Defender {} should be intercepting".format(defender_with_max_distance.uniqueID)
                     else:

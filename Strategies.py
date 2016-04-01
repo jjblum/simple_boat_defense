@@ -387,8 +387,11 @@ class PointAtLocation(Strategy):
         self._target = target
 
     def idealState(self):
-        dx = self._target[0] - self.boat.state[0]
-        dy = self._target[1] - self.boat.state[1]
+        try:
+            dx = self._target[0] - self.boat.state[0]
+            dy = self._target[1] - self.boat.state[1]
+        except:
+            asdf = 0
         state = np.zeros((6,))
         state[4] = np.arctan2(dy, dx)
         self.controller.idealState = state
