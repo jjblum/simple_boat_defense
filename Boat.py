@@ -73,8 +73,11 @@ class Boat(object):
         self._hasBeenTargeted = False  # a flag for attackers only. If a defender has been assigned to intercept, this is true.
         self._target = None  # the boat's current target agent
         self._targetedBy = None  # if the boat has been targeted, this is the intercepting agent
+        self._targetedByCount = 0  # number of boats that are targeting this boat
         self._pointOfInterception = None  # the location where an interception is predicted to happen
         self._evading = False
+        self._numberOfInterceptionAttempts = 0  # the number of times a defender has attempted to intercept something
+        self._originalState = None  # used to allow defenders to go back to where they were first arrayed
 
         Boat.idCount += 1
 
@@ -265,6 +268,30 @@ class Boat(object):
     @pointOfInterception.setter
     def pointOfInterception(self, pointOfInterception_in):
         self._pointOfInterception = pointOfInterception_in
+
+    @property
+    def numberOfInterceptionAttempts(self):
+        return self._numberOfInterceptionAttempts
+
+    @numberOfInterceptionAttempts.setter
+    def numberOfInterceptionAttempts(self, num):
+        self._numberOfInterceptionAttempts = num
+
+    @property
+    def targetedByCount(self):
+        return self._targetedByCount
+
+    @targetedByCount.setter
+    def targetedByCount(self, tbc):
+        self._targetedByCount = tbc
+
+    @property
+    def originalState(self):
+        return self._originalState
+
+    @originalState.setter
+    def originalState(self, state):
+        self._originalState = state
 
     def __str__(self):
         return "Boat {ID}: {T} at X = {X}, Y = {Y}, TH = {TH}".format(ID=self.uniqueID,

@@ -824,7 +824,7 @@ class Circle_PID(Strategy):
 
 
 class Circle_Tracking(Strategy):
-    def __init__(self, boat, center, target_boat, radius_growth_rate=1.0):
+    def __init__(self, boat, center, target_boat, radius_growth_rate=0.25):
         super(Circle_Tracking, self).__init__(boat)
         self._boat = boat
         self._center = center
@@ -855,7 +855,7 @@ class Circle_Tracking(Strategy):
         # use cross product to determine which direction the lookahead needs to be
         target_heading_line = [np.cos(self._target.state[4]), np.sin(self._target.state[4])]
         cross = np.cross(center_to_target, target_heading_line)
-        lookaheadAngle = target_th + np.sign(cross)*np.deg2rad(1.0)
+        lookaheadAngle = target_th - np.sign(cross)*np.deg2rad(10.0)  # BEHIND the target
         lookaheadState = np.array([self._center[0] + self._radius*np.cos(lookaheadAngle),
                                    self._center[1] + self._radius*np.sin(lookaheadAngle)])
         boatToLookahead = np.array([lookaheadState[0] - self.boat.state[0], lookaheadState[1] - self.boat.state[1]])
@@ -863,7 +863,7 @@ class Circle_Tracking(Strategy):
 
         state = np.zeros((6,))
         phidot = self._target.state[2]/target_radius
-        state[2] = 1.1*self._radius*phidot
+        state[2] = self.boat.design.maxSpeed  # 1.5*self._radius*phidot,
         state[4] = boatToLookaheadAngle
         self.controller.idealState = state
         #self.boat.plotData = np.column_stack(([self.boat.state[0], lookaheadState[0]], [self.boat.state[1], lookaheadState[1]]))

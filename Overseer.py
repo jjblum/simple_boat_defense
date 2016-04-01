@@ -1,12 +1,7 @@
 import Boat
-import math
 import numpy as np
 import copy
 import Strategies
-import Metrics
-import Polygon as poly
-import Polygon.Utils as polyUtils
-import matplotlib.pyplot as plt
 
 
 def wrapToPi(angle):
@@ -46,7 +41,7 @@ class Overseer(object):
         Focuses on offense and defensive tactics.
         Limiting the amount of information an Overseer has can affect system performance.
     """
-    def __init__(self, assets, defenders, attackers):
+    def __init__(self, assets, defenders, attackers, dynamic_or_static="static"):
         self._assets = assets
         self._attackers = attackers
         self._defenders = defenders
@@ -57,6 +52,8 @@ class Overseer(object):
         self._thCoeff = 2.54832785865
         self._rCoeff = 0.401354269952
         self._u0Coeff = 0.0914788305811
+        self._max_allowable_intercept_distace = 20.
+        self._dynamic_or_static = dynamic_or_static
 
     @property
     def defenseMetric(self):
@@ -106,6 +103,14 @@ class Overseer(object):
     def assets(self, assets_in):
         self._assets = assets_in
 
+    @property
+    def maxAllowableInterceptDistance(self):
+        self._max_allowable_intercept_distace
+
+    @maxAllowableInterceptDistance.setter
+    def maxAllowableInterceptDistance(self, maid):
+        self._max_allowable_intercept_distace = maid
+
     def update(self):
         self.updateDefense()
         self.updateAttack()
@@ -118,7 +123,7 @@ class Overseer(object):
             if attacker.hasBeenTargeted and not attacker.evading:
                 distance_to_interception = min(attacker.distanceToPoint(attacker.pointOfInterception), attacker.distanceToBoat(attacker.targetedBy))
                 distance_to_asset = np.sqrt(np.power(ass_x - attacker.state[0], 2) + np.power(ass_y - attacker.state[1], 2))
-                if distance_to_asset > distance_to_interception and distance_to_interception < 10.0:
+                if distance_to_asset > distance_to_interception and distance_to_interception < np.random.uniform(5., 20.) and np.random.uniform(0., 1.) < 0.05:
                     # if you can't hit the asset before interception AND the defender is within X meters
                     attacker.evading = True
                     if np.random.uniform(0., 1.) < 0.5:
@@ -131,7 +136,7 @@ class Overseer(object):
                     #    (Strategies.MoveTowardAsset, (attacker,))
                     #], [np.random.uniform(5.0, 30.0), 999.0])
             if attacker.evading:
-                if np.random.uniform(0., 1.) < 0.005:  # essentially assign a random time to the circling
+                if np.random.uniform(0., 1.) < 0.01:  # essentially assign a random time to the circling
                     attacker.evading = False
                     attacker.strategy = Strategies.MoveTowardAsset(attacker)
 
@@ -145,16 +150,43 @@ class Overseer(object):
                     defender.busy = False
                     defender.target.hasBeenTargeted = False
                     defender.target = None
+                    defender.pointOfInterception = None
                     defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 10.0, surgeVelocity=2.5)
                 elif defender.pointOfInterception is not None:
                     phi = np.arctan2(defender.pointOfInterception[1] - defender.target.state[1], defender.pointOfInterception[0] - defender.target.state[0])
                     if absoluteAngleDifference(defender.target.state[4], phi) > np.deg2rad(15.) or defender.target.state[2] < 0.1:
                         # attacker is no longer headed to the intercept point (either by heading or slowing down)
                         defender.busy = False
-                        defender.strategy = Strategies.Circle_Tracking(defender, [0., 0.], defender.target, radius_growth_rate=0.3)
+                        if self._dynamic_or_static == "dynamic":
+                            defender.strategy = Strategies.Circle_Tracking(defender, [0., 0.], defender.target, radius_growth_rate=0.0)
+                        elif self._dynamic_or_static == "static":
+                            defender.strategy = Strategies.StrategySequence(defender, [
+                                (Strategies.PointAtLocation, (defender, [defender.originalState[0], defender.originalState[1]])),
+                                (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),
+                                (Strategies.ChangeHeading, (defender, defender.originalState[4]))
+                            ])
                         defender.target.hasBeenTargeted = False
+                        defender.target.targetedByCount -= 1
                         defender.target.pointOfInterception = None
                         defender.pointOfInterception = None
+                    if defender.distanceToBoat(asset) > defender.target.distanceToBoat(asset):
+                        # defender is totally out of position, need another boat to intercept
+                        defender.busy = False
+                        defender.strategy = Strategies.MoveTowardAsset(defender)
+                        defender.target.hasBeenTargeted = False
+                        defender.target.targetedByCount -= 1
+                        defender.target.pointOfInterception = None
+                        defender.pointOfInterception = None
+
+        """
+            4 possible reasons a defender should not intercept:
+                1) it is busy intercepting something else
+                2) another defender is already intercepting
+                3) the attacker is not on a straight line course
+                4) the defender cannot reach the line of interception in time
+
+            If a non-busy defender doesn't intercept someting it clearly should, something else is going on erroneously
+        """
 
         able_defenders = [defender for defender in self._defenders if not defender.busy]
         ND = len(able_defenders)
@@ -172,7 +204,8 @@ class Overseer(object):
 
         # where will attackers be in T seconds? assume straight line constant velocity
         for attacker in self._attackers:
-            if not attacker.hasBeenTargeted:
+            #if not attacker.hasBeenTargeted:
+            if attacker.targetedByCount < 1:
                 x0 = attacker.state[0]
                 y0 = attacker.state[1]
                 u = np.round(attacker.state[2], 3)
@@ -180,7 +213,7 @@ class Overseer(object):
                 thdot = attacker.state[5]
                 angleToAsset = attacker.globalAngleToBoat(asset)
                 distance_to_asset = attacker.distanceToBoat(asset)
-                if np.abs(angleToAsset - th) < 0.01 and u > 0.1 and np.abs(thdot) < np.deg2rad(5.0):
+                if absoluteAngleDifference(angleToAsset, th) < np.deg2rad(10.) and u > 0.1 and np.abs(thdot) < np.deg2rad(5.0):
                     #print "Attacker {} is on a straight line intercept with the asset!".format(attacker.uniqueID)
                     # find the time when it will hit, assuming the asset isn't moving for now
                     dx = asset.state[0] - x0
@@ -189,7 +222,7 @@ class Overseer(object):
                     ty = 1./(u*np.sin(th))*dy
                     # tx and ty will be very similar, so just average them
                     t_impact = (tx + ty)/2.
-                    NG = 20
+                    NG = 25
                     fraction = np.linspace(0., 1., NG)
                     discrete_intercept_line = np.column_stack((x0 + fraction*t_impact*u*np.cos(th), y0 + fraction*t_impact*u*np.sin(th)))
                     discrete_distances = np.fliplr(np.atleast_2d(fraction))*distance_to_asset
@@ -215,8 +248,8 @@ class Overseer(object):
                     TTA_by_defender = np.reshape(TTA, (ND, NG))
 
                     ######
-                    REQUIRED_TIME_BUFFER = 1.0  # extra seconds!
-                    MAX_ALLOWABLE_INTERCEPT_DISTANCE = 20.0
+                    REQUIRED_TIME_BUFFER = 0.0  # extra seconds!
+                    MAX_ALLOWABLE_INTERCEPT_DISTANCE = self._max_allowable_intercept_distace
                     ######
                     able_to_intercept = np.logical_and(
                             (np.repeat(np.atleast_2d(fraction*t_impact), ND, axis=0) - TTA_by_defender) > REQUIRED_TIME_BUFFER,
@@ -250,19 +283,22 @@ class Overseer(object):
 
                         attacker.hasBeenTargeted = True
                         attacker.targetedBy = defender_with_max_distance
+                        attacker.targetedByCount += 1
                         attacker.pointOfInterception = copy.deepcopy(intercept_point)
                         defender_with_max_distance.target = attacker
                         defender_with_max_distance.pointOfInterception = copy.deepcopy(intercept_point)
                         defender_with_max_distance.busy = True
                         defender_with_max_distance.strategy = Strategies.StrategySequence(defender_with_max_distance, [
                             (Strategies.PointAtLocation, (defender_with_max_distance, defender_with_max_distance.pointOfInterception)),
-                            (Strategies.DestinationOnly, (defender_with_max_distance, defender_with_max_distance.pointOfInterception)),
+                            (Strategies.DestinationOnly, (defender_with_max_distance, defender_with_max_distance.pointOfInterception, 1.0, True)),
                             (Strategies.PointAtBoat, (defender_with_max_distance, attacker)),
                             (Strategies.MoveTowardBoat, (defender_with_max_distance, attacker))
                         ])
+                        defender_with_max_distance.numberOfInterceptionAttempts += 1
                         #print "Defender {} should be intercepting".format(defender_with_max_distance.uniqueID)
+                        print "Defender {} has attempted {} interceptions".format(defender_with_max_distance.uniqueID, defender_with_max_distance.numberOfInterceptionAttempts)
                     else:
-                        print "NO ONE CAN INTERCEPT! OH NOES!"
+                        #print "NO ONE CAN INTERCEPT! OH NOES!"
                         None
 
                     None

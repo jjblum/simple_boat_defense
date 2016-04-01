@@ -1,12 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 import scipy.integrate as spi
 import scipy.spatial as spatial
-import multiprocessing as mp
+import sys
 import pylab
 import math
 import time
+import copy
 
 import Boat
 import Strategies
@@ -14,14 +14,14 @@ import Overseer
 import Metrics
 
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
-WITH_PLOTTING = True
+WITH_PLOTTING = False
 PLOT_MAIN = True
 PLOT_METRIC = True
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
-BOAT_COUNT = 6
-ATTACKER_COUNT = 1
-print "{} ATTACKERS, {} DEFENDERS".format(ATTACKER_COUNT, BOAT_COUNT - 1 - ATTACKER_COUNT)
+BOAT_COUNT = 5
+ATTACKER_COUNT = 2
+#print "{} ATTACKERS, {} DEFENDERS".format(ATTACKER_COUNT, BOAT_COUNT - 1 - ATTACKER_COUNT)
 MAX_DEFENDERS_PER_RING = np.arange(10.0, 100.0, 2.0)
 RADII_OF_RINGS = np.arange(10.0, 600.0, 5.0)
 ATTACKER_REMOVAL_DISTANCE = 1.0
@@ -209,6 +209,7 @@ def formDefenderRings(defenders):
                 defenders[defender_id].state[1] = radius*math.sin(angle)
                 defenders[defender_id].state[4] = math.atan2(defenders[defender_id].state[1],
                                                              defenders[defender_id].state[0])
+                defenders[defender_id].originalState = copy.deepcopy(defenders[defender_id].state)
                 defender_id += 1
             ring += 1
 
@@ -241,7 +242,7 @@ def initialPositions(assets, defenders, attackers, type="static_ring"):
         randomAttackers(attackers)
 
 
-def initialStrategy(assets, defenders, attackers, type="static_ring"):
+def initialStrategy(assets, defenders, attackers, type="static_ring", dynamic_or_static="static"):
     if type == "static_ring":
         for b in assets:
             None # asset does nothing
@@ -264,7 +265,11 @@ def initialStrategy(assets, defenders, attackers, type="static_ring"):
             #    b.strategy = Strategies.MoveToClosestAttacker(b)
             #else:
             #    None
-            b.strategy = Strategies.Circle_LOS(b, [0., 0.], 12.0, surgeVelocity=2.5)
+            if dynamic_or_static == "dynamic":
+                b.strategy = Strategies.Circle_LOS(b, [0., 0.], 12.0, surgeVelocity=2.5)
+            elif dynamic_or_static == "static":
+                b.strategy = Strategies.DoNothing(b)
+
             # b.strategy = Strategies.MoveToClosestAttacker(b)
             # b.strategy = Strategies.Circle_Tracking(b, [0., 0.], attackers[0], 0.25)
 
@@ -289,23 +294,28 @@ def initialStrategy(assets, defenders, attackers, type="static_ring"):
             # b.strategy = Strategies.MoveTowardAsset(b, 1.0)
 
 
-def main():
+def main(numBoats=BOAT_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=20., dynamic_or_static="dynamic"):
     # spawn boats objects
 
-    boat_list = [Boat.Boat() for i in range(0, BOAT_COUNT)]
+    #boat_list = [Boat.Boat() for i in range(BOAT_COUNT)]
+    boat_list = [Boat.Boat() for i in range(numBoats)]
 
     # set boat types
     boat_list[0].type = "asset"
-    for b in boat_list[-1 - ATTACKER_COUNT:-1]:
+    #for b in boat_list[-1 - ATTACKER_COUNT:-1]:
+    for b in boat_list[-1 - numAttackers:-1]:
         b.type = "attacker"
+
+    print "{} ATTACKERS, {} DEFENDERS".format(numAttackers, numBoats - 1 - numAttackers)
 
     attackers = [b for b in boat_list if b.type == "attacker"]
     defenders = [b for b in boat_list if b.type == "defender"]
     assets = [b for b in boat_list if b.type == "asset"]
-    overseer = Overseer.Overseer(assets, defenders, attackers)
+    overseer = Overseer.Overseer(assets, defenders, attackers, dynamic_or_static)
     overseer.attackers = attackers
     overseer.defenders = defenders
     overseer.assets = assets
+    overseer.maxAllowableInterceptDistance = max_allowable_intercept_distance
     for b in boat_list:
         b.boatList = boat_list
         b.attackers = attackers
@@ -314,20 +324,22 @@ def main():
 
     # set initial positions and strategies
     initialPositions(assets, defenders, attackers, SIMULATION_TYPE)
-    initialStrategy(assets, defenders, attackers, SIMULATION_TYPE)
+    initialStrategy(assets, defenders, attackers, SIMULATION_TYPE, dynamic_or_static)
 
     # set up defense metric tools
     if SIMULATION_TYPE == "static_ring":
         #defenseMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=1.*np.pi/180., resolution_r=5.0, max_r=30.0, time_threshold=5.0)
-        overseerMetric = Metrics.DefenderFrameTimeToArrive(assets, defenders, attackers)
+        #overseerMetric = Metrics.DefenderFrameTimeToArrive(assets, defenders, attackers)
+        None
     elif SIMULATION_TYPE == "convoy":
         #Metrics.DefenseMetric(assets, defenders, attackers)
-        overseerMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=10.*np.pi/180.)
+        #overseerMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=10.*np.pi/180.)
+        None
 
-    overseer.defenseMetric = overseerMetric
+    #overseer.defenseMetric = overseerMetric
     plottingMetric = Metrics.MinimumTTARings(assets, defenders, attackers)
     metrics = list()
-    metrics.append(overseerMetric)
+    #metrics.append(overseerMetric)
     metrics.append(plottingMetric)
 
     # move asset using ODE integration
@@ -417,8 +429,20 @@ def main():
         #        with respect to the asset in the center
 
         if WITH_PLOTTING:
-            plotSystem(assets, defenders, attackers, overseerMetric, plottingMetric, SIMULATION_TYPE, t, real_time_zero)
+            plotSystem(assets, defenders, attackers, None, plottingMetric, SIMULATION_TYPE, t, real_time_zero)
     print "Finished {} simulated seconds in {} real-time seconds".format(t,  time.time() - real_time_zero)
+    #np.savez()
+    #np.savez('RawTimeToArrive.npz', th=th, r=r, u0=u0, T_th_r_u0=T_th_r_u0)
 
 if __name__ == '__main__':
-    main()
+    args = sys.argv
+    # number of boats, number of attackers, max_allowable_intercept_distance, dynamic_or_static
+    args = args[1:]
+    if len(args) > 0:
+        numBoats = int(args[0])
+        numAttackers = int(args[1])
+        max_allowable_intercept_distance = float(args[2])
+        dynamic_or_static = args[3]
+        main(numBoats, numAttackers, max_allowable_intercept_distance, dynamic_or_static)
+    else:
+        main()
