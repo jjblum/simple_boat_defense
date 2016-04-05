@@ -19,13 +19,14 @@ PLOT_MAIN = True
 PLOT_METRIC = True
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
-BOAT_COUNT = 5
+DEFENDER_COUNT = 6
 ATTACKER_COUNT = 2
+BOAT_COUNT = DEFENDER_COUNT + ATTACKER_COUNT + 1  # one asset
 #print "{} ATTACKERS, {} DEFENDERS".format(ATTACKER_COUNT, BOAT_COUNT - 1 - ATTACKER_COUNT)
 MAX_DEFENDERS_PER_RING = np.arange(10.0, 100.0, 2.0)
 RADII_OF_RINGS = np.arange(10.0, 600.0, 5.0)
-ATTACKER_REMOVAL_DISTANCE = 1.0
-ASSET_REMOVAL_DISTANCE = 1.0
+ATTACKER_REMOVAL_DISTANCE = 2.0
+ASSET_REMOVAL_DISTANCE = 2.0
 # TODO - tune this probability or figure out how to treat an interaction as a single interaction (perhaps spawn an object tracking the pairwise interaction)
 PROB_OF_ATK_REMOVAL_PER_TICK = 0.3  # every time step this probability is applied
 
@@ -294,11 +295,10 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", dynamic_or
             # b.strategy = Strategies.MoveTowardAsset(b, 1.0)
 
 
-def main(numBoats=BOAT_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=20., dynamic_or_static="dynamic"):
+def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=20., dynamic_or_static="dynamic"):
     # spawn boats objects
-
     #boat_list = [Boat.Boat() for i in range(BOAT_COUNT)]
-    boat_list = [Boat.Boat() for i in range(numBoats)]
+    boat_list = [Boat.Boat() for i in range(numDefenders + numAttackers + 1)]
 
     # set boat types
     boat_list[0].type = "asset"
@@ -306,7 +306,7 @@ def main(numBoats=BOAT_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_interce
     for b in boat_list[-1 - numAttackers:-1]:
         b.type = "attacker"
 
-    print "{} ATTACKERS, {} DEFENDERS".format(numAttackers, numBoats - 1 - numAttackers)
+    print "{} DEFENDERS, {} ATTACKERS".format(numDefenders, numAttackers)
 
     attackers = [b for b in boat_list if b.type == "attacker"]
     defenders = [b for b in boat_list if b.type == "defender"]
@@ -405,7 +405,7 @@ def main(numBoats=BOAT_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_interce
             overseer.atk_vs_asset_pairwise_distances = atk_vs_asset_pairwise_distances  # inform the overseer
             atk_vs_asset_minimum_distance = np.min(atk_vs_asset_pairwise_distances, 1)
             if atk_vs_asset_minimum_distance < ASSET_REMOVAL_DISTANCE:
-                print "Simulation ends: Asset was attacked successfully"
+                result_string = "Simulation ends: Asset was attacked successfully"
                 break
 
             def_vs_atk_pairwise_distances = spatial.distance.cdist(X_defenders, X_attackers)
@@ -422,7 +422,7 @@ def main(numBoats=BOAT_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_interce
                 del attackers[attacker] # need to delete in backwards order to avoid index conflicts
         else:
             # end the simulation
-            print "Simulation Ends: All attackers removed"
+            result_string = "Simulation Ends: All attackers removed"
             break
 
         # TODO - may be easy to speed this up when an attacker is obviously outside the bounding box of all defenders
@@ -430,19 +430,19 @@ def main(numBoats=BOAT_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_interce
 
         if WITH_PLOTTING:
             plotSystem(assets, defenders, attackers, None, plottingMetric, SIMULATION_TYPE, t, real_time_zero)
-    print "Finished {} simulated seconds in {} real-time seconds".format(t,  time.time() - real_time_zero)
+    print result_string + "  finished {} simulated seconds in {} real-time seconds".format(t,  time.time() - real_time_zero)
     #np.savez()
     #np.savez('RawTimeToArrive.npz', th=th, r=r, u0=u0, T_th_r_u0=T_th_r_u0)
 
 if __name__ == '__main__':
     args = sys.argv
-    # number of boats, number of attackers, max_allowable_intercept_distance, dynamic_or_static
+    # number of defenders, number of attackers, max_allowable_intercept_distance, dynamic_or_static
     args = args[1:]
     if len(args) > 0:
-        numBoats = int(args[0])
+        numDefenders = int(args[0])
         numAttackers = int(args[1])
         max_allowable_intercept_distance = float(args[2])
         dynamic_or_static = args[3]
-        main(numBoats, numAttackers, max_allowable_intercept_distance, dynamic_or_static)
+        main(numDefenders, numAttackers, max_allowable_intercept_distance, dynamic_or_static)
     else:
         main()

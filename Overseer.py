@@ -296,7 +296,7 @@ class Overseer(object):
                         ])
                         defender_with_max_distance.numberOfInterceptionAttempts += 1
                         #print "Defender {} should be intercepting".format(defender_with_max_distance.uniqueID)
-                        print "Defender {} has attempted {} interceptions".format(defender_with_max_distance.uniqueID, defender_with_max_distance.numberOfInterceptionAttempts)
+                        #print "Defender {} has attempted {} interceptions".format(defender_with_max_distance.uniqueID, defender_with_max_distance.numberOfInterceptionAttempts)
                     else:
                         #print "NO ONE CAN INTERCEPT! OH NOES!"
                         None
