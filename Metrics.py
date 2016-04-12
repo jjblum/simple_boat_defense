@@ -149,12 +149,25 @@ class MinimumTTARings(DefenseMetric):
         self.createPolarGrid()
         self.createCartesianGrid()
         self._minTTA_dict = dict()
+        self._minTTA = list()
+        self._t = 0.
+
+    @property
+    def t(self):
+        return self._t
+
+    @t.setter
+    def t(self, t_in):
+        self._t = t_in
 
     def radii(self):
         return self._radii
 
-    def minTTA(self):
+    def minTTA_dict(self):
         return self._minTTA_dict
+
+    def minTTA(self):
+        return self._minTTA
 
     def createPolarGrid(self):
         TH, R = np.meshgrid(self._ths, self._radii)
@@ -207,7 +220,8 @@ class MinimumTTARings(DefenseMetric):
         for i in range(minTTA.shape[0]):
             self._minTTA_dict[self._radii[i]] = minTTA[i, :]
 
-
+        if np.abs(np.round(self._t, 0) - self._t) < 10e-3:
+            self._minTTA.append(minTTA)
 
 
 """

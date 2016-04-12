@@ -536,6 +536,7 @@ class MoveTowardBoat(Strategy):
         self._strategy.idealState()
 
 
+
 class Square(StrategySequence):
     # Move around the vertices of a square given its center and edge size.
     # User can specify which corner and rotation direction they want
@@ -927,6 +928,72 @@ class MoveToClosestAttacker(Strategy):
         ]))
 
 
+class FeintTowardAsset(Strategy):
+    def __init__(self, boat, distanceToInitiateRetreat=20.0):
+        super(FeintTowardAsset, self).__init__(boat)
+
+        initialAngle = self.assets[0].globalAngleToBoat(boat)
+        if np.random.uniform(0., 1.) > 0.5:
+            newAngle = initialAngle + np.pi/2.
+        else:
+            newAngle = initialAngle - np.pi/2.
+        self._final_x = self.assets[0].state[0] + 50.0*np.cos(newAngle)
+        self._final_y = self.assets[0].state[1] + 50.0*np.sin(newAngle)
+
+        self._distanceToInitiateRetreat=distanceToInitiateRetreat
+        self._strategy = MoveTowardAsset(boat)
+        self.controller = self._strategy.controller
+
+    @property  # need to override the standard controller property with the nested strategy's controller
+    def controller(self):
+        return self._strategy.controller
+
+    @controller.setter  # need to override the standard controller property with the nested strategy's controller
+    def controller(self, controller):
+        self._controller = controller
+
+    def updateFinished(self):  # need to override to get the finished status of the nested strategy!!!
+        if self.boat.distanceToBoat(self.assets[0]) < self._distanceToInitiateRetreat:
+            self._strategy = DestinationOnly(self.boat, [self._final_x, self._final_y])
+        self.strategy.updateFinished()
+        self.finished = self.strategy.finished
+
+    def idealState(self):
+        return self._strategy.idealState()
+
+
+class RandomPatrolWithinCircle(Strategy):
+    def __init__(self, boat, center, radius):
+        super(RandomPatrolWithinCircle, self).__init__(boat)
+        self._boat = boat
+        self._center = center
+        self._radius = radius
+        self.randomPosition()
+
+    def randomPosition(self):
+        th = np.random.uniform(-np.pi, np.pi)
+        r = np.random.uniform(0.0, self._radius)
+        X = self._center[0] + r*np.cos(th), self._center[1] + r*np.sin(th)
+        self._strategy = DestinationOnlyExecutor(self.boat, X, positionThreshold=3.0)
+
+    @property  # need to override the standard controller property with the nested strategy's controller
+    def controller(self):
+        return self._strategy.controller
+
+    @controller.setter  # need to override the standard controller property with the nested strategy's controller
+    def controller(self, controller):
+        self._controller = controller
+
+    def updateFinished(self):  # need to override to get the finished status of the nested strategy!!!
+        if self.strategy.finished:
+            self.randomPosition()
+        self.strategy.updateFinished()
+        self.finished = self.strategy.finished
+
+    def idealState(self):
+        return self._strategy.idealState()
+
+
 # TODO - Executor that decides between a single spline, rotating in place first then a spline, or full point THEN shoot
 
 # TODO - Defensive block: get onto a line of attack
@@ -966,6 +1033,8 @@ class FollowWaypoints(Strategy):
                  lookAhead=0.05, positionThreshold=1.0, closed_circuit=False):
         super(FollowWaypoints, self).__init__(boat)
         self._boat = boat
+        if type(waypoints) != type(np.ndarray):
+            waypoints = np.array(waypoints)
         self._waypoints = waypoints
         self._headings = headings
         self._headingErrorSurgeCutoff = headingErrorSurgeCutoff
@@ -1023,3 +1092,42 @@ class FollowWaypoints(Strategy):
 
         state[2] = min(surgeVelocityCap, self._surgeVelocity)
         self.controller.idealState = state
+
+
+class DestinationOnlyAlongCircle(Strategy):
+    # move along a circle to the destination rather than straight there
+    def __init__(self, boat, center, destination, positionThreshold=3.0):
+        self._boat = boat
+        super(DestinationOnlyAlongCircle, self).__init__(boat)
+        self._center = center
+        self._destination = destination
+        self._positionThreshold = positionThreshold
+        self._radius = np.sqrt(np.power(destination[0] - center[0], 2) + np.power(destination[1] - center[1], 2))
+        currentAngle = np.arctan2(boat.state[1]-center[1], boat.state[0]-center[0])
+        goalAngle = np.arctan2(destination[1] - center[1], destination[0] - center[0])
+        if currentAngle < 0.:
+            currentAngle += 2*np.pi
+        if goalAngle < 0.:
+            goalAngle += 2*np.pi
+        if goalAngle > currentAngle:
+            direction = "ccw"
+        else:
+            direction = "cw"
+        self._strategy = Circle_LOS(boat, center, self._radius, direction, surgeVelocity=boat.design.maxSpeed)
+
+    @property  # need to override the standard controller property with the nested strategy's controller
+    def controller(self):
+        return self._strategy.controller
+
+    @controller.setter  # need to override the standard controller property with the nested strategy's controller
+    def controller(self, controller):
+        self._controller = controller
+
+    def updateFinished(self):  # need to override to get the finished status of the nested strategy!!!
+        if self.boat.distanceToPoint(self._destination) < self._positionThreshold:
+            self._strategy = DoNothing(self.boat)
+        self.strategy.updateFinished()
+        self.finished = self.strategy.finished
+
+    def idealState(self):
+        return self._strategy.idealState()

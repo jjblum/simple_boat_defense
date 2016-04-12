@@ -202,7 +202,7 @@ def LOS_angle(length, sx, sy, sth, u, coeffs, x, y, lookAhead=0.1):
     # resulting triangle
     relative_angle = math.atan2((distance - dy_frenet), dx_frenet)
     global_angle = tangent_th + relative_angle
-    print "X = ({:.2f},{:.2f})  closest = ({:.2f},{:.2f})  distance = {:.2f}  relative angle = {:.2f} deg, global angle = {:.2f} deg".format(x, y, closest[0], closest[1], distance, np.rad2deg(relative_angle), np.rad2deg(global_angle))
+    #print "X = ({:.2f},{:.2f})  closest = ({:.2f},{:.2f})  distance = {:.2f}  relative angle = {:.2f} deg, global angle = {:.2f} deg".format(x, y, closest[0], closest[1], distance, np.rad2deg(relative_angle), np.rad2deg(global_angle))
     return u_star, global_angle
 
 

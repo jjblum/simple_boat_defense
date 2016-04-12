@@ -78,6 +78,7 @@ class Boat(object):
         self._evading = False
         self._numberOfInterceptionAttempts = 0  # the number of times a defender has attempted to intercept something
         self._originalState = None  # used to allow defenders to go back to where they were first arrayed
+        self._ringPenetrationDict = dict()  # radius: (time, angle wrt asset), dictionary that logs when attackers first encroach upon asset
 
         Boat.idCount += 1
 
@@ -292,6 +293,10 @@ class Boat(object):
     @originalState.setter
     def originalState(self, state):
         self._originalState = state
+
+    @property
+    def ringPenetrationDict(self):
+        return self._ringPenetrationDict
 
     def __str__(self):
         return "Boat {ID}: {T} at X = {X}, Y = {Y}, TH = {TH}".format(ID=self.uniqueID,

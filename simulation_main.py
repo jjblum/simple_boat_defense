@@ -14,19 +14,19 @@ import Overseer
 import Metrics
 
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
-WITH_PLOTTING = False
+WITH_PLOTTING = True
 PLOT_MAIN = True
 PLOT_METRIC = True
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
-DEFENDER_COUNT = 6
-ATTACKER_COUNT = 2
+DEFENDER_COUNT = 1
+ATTACKER_COUNT = 5
 BOAT_COUNT = DEFENDER_COUNT + ATTACKER_COUNT + 1  # one asset
 #print "{} ATTACKERS, {} DEFENDERS".format(ATTACKER_COUNT, BOAT_COUNT - 1 - ATTACKER_COUNT)
 MAX_DEFENDERS_PER_RING = np.arange(10.0, 100.0, 2.0)
 RADII_OF_RINGS = np.arange(10.0, 600.0, 5.0)
 ATTACKER_REMOVAL_DISTANCE = 2.0
-ASSET_REMOVAL_DISTANCE = 2.0
+ASSET_REMOVAL_DISTANCE = 10.0
 # TODO - tune this probability or figure out how to treat an interaction as a single interaction (perhaps spawn an object tracking the pairwise interaction)
 PROB_OF_ATK_REMOVAL_PER_TICK = 0.3  # every time step this probability is applied
 
@@ -93,15 +93,15 @@ def plotSystem(assets, defenders, attackers, defenderFrameMetric, assetFrameMetr
         max_r = max(assetFrameMetric.radii())
         ax_metric.set_rmax(max_r*2.0)
         styles = ["r", "g", "b", "m", "c"]
-        minTTA = assetFrameMetric.minTTA()
+        minTTA = assetFrameMetric.minTTA_dict()
         keys = minTTA.keys()
         for i in range(len(keys)):
             ax_metric.draw_artist(ax_metric.plot(assetFrameMetric.ths, minTTA[keys[i]], styles[i], linewidth=4.0)[0])
-        relative_x = defenders_x - mean_x
-        relative_y = defenders_y - mean_y
-        defenders_r = np.sqrt(np.power(relative_x, 2.) + np.power(relative_y, 2.))  # distance from asset to defender
-        defenders_phi = np.arctan2(relative_y, relative_x)  # angle from asset to defender
-        ax_metric.draw_artist(ax_metric.plot(defenders_phi, defenders_r, 'go', ms=14.0)[0])
+        #relative_x = defenders_x - mean_x
+        #relative_y = defenders_y - mean_y
+        #defenders_r = np.sqrt(np.power(relative_x, 2.) + np.power(relative_y, 2.))  # distance from asset to defender
+        #defenders_phi = np.arctan2(relative_y, relative_x)  # angle from asset to defender
+        #ax_metric.draw_artist(ax_metric.plot(defenders_phi, defenders_r, 'go', ms=14.0)[0])
 
         ## plot inscribed circle
         #ax_metric.draw_artist(ax_metric.plot(np.linspace(-np.pi, np.pi, 100), min_r*np.ones(100,), 'm-', linewidth=6.0)[0])
@@ -121,6 +121,10 @@ def plotSystem(assets, defenders, attackers, defenderFrameMetric, assetFrameMetr
                         0.05*math.cos(assets_th[j]),
                         0.05*math.sin(assets_th[j]),
                         fc="b", ec="b", head_width=0.5, head_length=1.0) for j in range(len(assets_x))]
+
+        # ring around the asset that indicates where it will be removed by an attacker
+        asset_removal_th = np.arange(0., 2*np.pi+0.001, np.deg2rad(5.))
+        ax_main.draw_artist(ax_main.plot(assets_x[0] + ASSET_REMOVAL_DISTANCE*np.cos(asset_removal_th), assets_y[0] + ASSET_REMOVAL_DISTANCE*np.sin(asset_removal_th), 'r.', markersize=3)[0])
 
         # TODO - put this in the metric plot instead, of course
         #for d in defenders:
@@ -227,10 +231,19 @@ def randomAttackers(attackers):
         b.state[4] = angle[1]
 
 
+def groupedAttackers(attackers):
+    center = [50., -50.]
+    for b in attackers:
+        b.state[0] = center[0] + np.random.uniform(-5., 5.)
+        b.state[1] = center[1] + np.random.uniform(-5., 5.)
+        angle = np.arctan2(-b.state[1], -b.state[0])
+        b.state[4] = angle
+
 def initialPositions(assets, defenders, attackers, type="static_ring"):
     if type == "static_ring":
         formDefenderRings(defenders)
-        randomAttackers(attackers)
+        #randomAttackers(attackers)
+        groupedAttackers(attackers)
         #attackers[0].state[0] = 30.
         #attackers[0].state[1] = 0.
         #attackers[0].state[4] = np.pi
@@ -251,14 +264,6 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", dynamic_or
             # b.strategy = Strategies.SingleSpline(b, [20.0, 20.0], 0, surgeVelocity=2.5, driftDown=True)
             # b.strategy = Strategies.Square(b, 1.0, 0.0, 10.0)
             # b.strategy = Strategies.FollowWaypoints(b, np.column_stack(([1, 3, -20, -10], [0, 30, -5, -3])), surgeVelocity=2.5, closed_circuit=True)
-            # b.strategy = Strategies.Circle_PID(b, [0., 25.0], 25., "ccw", surgeVelocity=0.5)
-            # b.strategy = Strategies.Circle_LOS(b, [0., 1.5], 1.5, "ccw", surgeVelocity=0.6)
-            # b.strategy = Strategies.SpinInPlace(b, direction="cw")
-            # b.strategy = Strategies.HoldHeading(b, surgeVelocity=5.)
-            # b.strategy = Strategies.StrategySequence(b, [
-            #    (Strategies.ChangeHeading, (b, -np.pi/2.)),
-            #    (Strategies.HoldHeading, (b, 5.0))
-            #])
             # TODO - turning ccw turns FASTER than turning cw???? Figure out why. Surge velocity doesn't show this.
         for b in defenders:
             None
@@ -266,21 +271,25 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", dynamic_or
             #    b.strategy = Strategies.MoveToClosestAttacker(b)
             #else:
             #    None
-            if dynamic_or_static == "dynamic":
-                b.strategy = Strategies.Circle_LOS(b, [0., 0.], 12.0, surgeVelocity=2.5)
-            elif dynamic_or_static == "static":
-                b.strategy = Strategies.DoNothing(b)
+            #if dynamic_or_static == "dynamic":
+            #    b.strategy = Strategies.Circle_LOS(b, [0., 0.], 12.0, surgeVelocity=2.5)
+            #elif dynamic_or_static == "static":
+            #    b.strategy = Strategies.DoNothing(b)
+            #b.strategy = Strategies.RandomPatrolWithinCircle(b, [0., 0.], 20.)
+            #b.strategy = Strategies.DestinationOnlyAlongCircle(b, [0., 0.], [-30., 0.])
 
             # b.strategy = Strategies.MoveToClosestAttacker(b)
             # b.strategy = Strategies.Circle_Tracking(b, [0., 0.], attackers[0], 0.25)
+            b.strategy = Strategies.Circle_LOS(b, [0., 0.], 20.0, surgeVelocity=2.5)
 
         for b in attackers:
             #b.strategy = Strategies.MoveTowardAsset(b, 1.0)
-            #b.strategy = Strategies.Circle_LOS(b, [0., 0.], b.distanceToBoat(assets[0]), direction="ccw", surgeVelocity=2.5)
-            b.strategy = Strategies.TimedStrategySequence(b, [
-                (Strategies.Circle_LOS, (b, [0., 0.], b.distanceToBoat(assets[0]), b.design.maxSpeed)),
-                (Strategies.MoveTowardAsset, (b,))
-            ], [np.random.uniform(0.0, 20.0), 1000.0])
+            #b.strategy = Strategies.TimedStrategySequence(b, [
+            #    (Strategies.Circle_LOS, (b, [0., 0.], b.distanceToBoat(assets[0]), b.design.maxSpeed)),
+            #    (Strategies.MoveTowardAsset, (b,))
+            #], [np.random.uniform(0.0, 2.0), 1000.0])
+            b.strategy = Strategies.FeintTowardAsset(b, distanceToInitiateRetreat=20.0)
+
             None
     elif type == "convoy":
         for b in assets:
@@ -295,14 +304,12 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", dynamic_or
             # b.strategy = Strategies.MoveTowardAsset(b, 1.0)
 
 
-def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=20., dynamic_or_static="dynamic"):
+def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=20., dynamic_or_static="dynamic", filename="junk_results"):
     # spawn boats objects
-    #boat_list = [Boat.Boat() for i in range(BOAT_COUNT)]
     boat_list = [Boat.Boat() for i in range(numDefenders + numAttackers + 1)]
 
     # set boat types
     boat_list[0].type = "asset"
-    #for b in boat_list[-1 - ATTACKER_COUNT:-1]:
     for b in boat_list[-1 - numAttackers:-1]:
         b.type = "attacker"
 
@@ -338,6 +345,9 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
 
     #overseer.defenseMetric = overseerMetric
     plottingMetric = Metrics.MinimumTTARings(assets, defenders, attackers)
+    for attacker in attackers:
+        for radius in plottingMetric.radii():
+            attacker.ringPenetrationDict[radius] = None
     metrics = list()
     #metrics.append(overseerMetric)
     metrics.append(plottingMetric)
@@ -348,32 +358,14 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
     dt = GLOBAL_DT
     step = 1
 
-    """
-    t0 = time.time()
-    pool = mp.Pool(processes=min(BOAT_COUNT, 20))
-    pool.map(printUID, boat_list)
-    print "Basic pool.map took {} seconds".format(time.time() - t0)
-
-    t0 = time.time()
-    results = [pool.apply_async(printUID, b) for b in boat_list]
-    print [result.get(timeout=1) for result in results]
-    print "pool.apply_async took {} seconds".format(time.time() - t0)
-
-    t0 = time.time()
-    for b in boat_list:
-        printUID(b)
-    print "Simple loop took {} seconds".format(time.time() - t0)
-    """
-
     while t < TOTAL_TIME:
         times = np.linspace(t, t+dt, 2)
+        plottingMetric.t = t
         for b in boat_list:
             b.time = t
             b.control()
             states = spi.odeint(Boat.ode, b.state, times, (b,))
             b.state = states[1]
-            #if b.type == "asset":
-            #    print "t = {:.2f}, thdot = {:.3f}, moment = {:.2f}, ".format(t, b.state[5], b._moment)
         t += dt
         step += 1
 
@@ -382,7 +374,7 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
             m.measureCurrentState()
 
         # update any overseers
-        overseer.update()
+        # overseer.update()
 
         if len(attackers) > 0:
             # build location arrays for defenders, attackers, and assets
@@ -402,10 +394,21 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
                 X_assets[j, 0] = boat.state[0]
                 X_assets[j, 1] = boat.state[1]
             atk_vs_asset_pairwise_distances = spatial.distance.cdist(X_assets, X_attackers)
+
+            # record when attackers penetrate certain perimeters
+            #for j in range(len(attackers)):
+            #    attacker = attackers[j]
+            #    for radius in plottingMetric.radii():
+            #        if attacker.ringPenetrationDict[radius] is None:
+            #            if atk_vs_asset_pairwise_distances[0, j] < radius:
+            #                attacker.ringPenetrationDict[radius] = t
+
             overseer.atk_vs_asset_pairwise_distances = atk_vs_asset_pairwise_distances  # inform the overseer
             atk_vs_asset_minimum_distance = np.min(atk_vs_asset_pairwise_distances, 1)
             if atk_vs_asset_minimum_distance < ASSET_REMOVAL_DISTANCE:
                 result_string = "Simulation ends: Asset was attacked successfully"
+                defenders_win = False
+                final_time = t
                 break
 
             def_vs_atk_pairwise_distances = spatial.distance.cdist(X_defenders, X_attackers)
@@ -423,6 +426,8 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
         else:
             # end the simulation
             result_string = "Simulation Ends: All attackers removed"
+            defenders_win = True
+            final_time = t
             break
 
         # TODO - may be easy to speed this up when an attacker is obviously outside the bounding box of all defenders
@@ -431,8 +436,7 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
         if WITH_PLOTTING:
             plotSystem(assets, defenders, attackers, None, plottingMetric, SIMULATION_TYPE, t, real_time_zero)
     print result_string + "  finished {} simulated seconds in {} real-time seconds".format(t,  time.time() - real_time_zero)
-    #np.savez()
-    #np.savez('RawTimeToArrive.npz', th=th, r=r, u0=u0, T_th_r_u0=T_th_r_u0)
+    np.savez(filename + ".npz", minTTA=np.array(plottingMetric.minTTA()), finalTime=t, defenders_win=defenders_win)
 
 if __name__ == '__main__':
     args = sys.argv
@@ -443,6 +447,7 @@ if __name__ == '__main__':
         numAttackers = int(args[1])
         max_allowable_intercept_distance = float(args[2])
         dynamic_or_static = args[3]
-        main(numDefenders, numAttackers, max_allowable_intercept_distance, dynamic_or_static)
+        filename = args[4]
+        main(numDefenders, numAttackers, max_allowable_intercept_distance, dynamic_or_static, filename)
     else:
         main()
