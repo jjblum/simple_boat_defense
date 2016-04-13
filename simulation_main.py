@@ -19,8 +19,8 @@ PLOT_MAIN = True
 PLOT_METRIC = True
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
-DEFENDER_COUNT = 1
-ATTACKER_COUNT = 5
+DEFENDER_COUNT = 3
+ATTACKER_COUNT = 1
 BOAT_COUNT = DEFENDER_COUNT + ATTACKER_COUNT + 1  # one asset
 #print "{} ATTACKERS, {} DEFENDERS".format(ATTACKER_COUNT, BOAT_COUNT - 1 - ATTACKER_COUNT)
 MAX_DEFENDERS_PER_RING = np.arange(10.0, 100.0, 2.0)
@@ -239,6 +239,7 @@ def groupedAttackers(attackers):
         angle = np.arctan2(-b.state[1], -b.state[0])
         b.state[4] = angle
 
+
 def initialPositions(assets, defenders, attackers, type="static_ring"):
     if type == "static_ring":
         formDefenderRings(defenders)
@@ -280,17 +281,23 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", dynamic_or
 
             # b.strategy = Strategies.MoveToClosestAttacker(b)
             # b.strategy = Strategies.Circle_Tracking(b, [0., 0.], attackers[0], 0.25)
-            b.strategy = Strategies.Circle_LOS(b, [0., 0.], 20.0, surgeVelocity=2.5)
+            # b.strategy = Strategies.Circle_LOS(b, [0., 0.], 20.0, surgeVelocity=2.5)
+            b.strategy = Strategies.DoNothing(b)
 
         for b in attackers:
-            #b.strategy = Strategies.MoveTowardAsset(b, 1.0)
-            #b.strategy = Strategies.TimedStrategySequence(b, [
-            #    (Strategies.Circle_LOS, (b, [0., 0.], b.distanceToBoat(assets[0]), b.design.maxSpeed)),
-            #    (Strategies.MoveTowardAsset, (b,))
-            #], [np.random.uniform(0.0, 2.0), 1000.0])
-            b.strategy = Strategies.FeintTowardAsset(b, distanceToInitiateRetreat=20.0)
-
+            """
+            if np.random.uniform(0., 1.) < 0.2:
+                b.strategy = Strategies.FeintTowardAsset(b, distanceToInitiateRetreat=40.0)
+            else:
+                if np.random.uniform(0., 1.) < 0.5:
+                    direction = "ccw"
+                else:
+                    direction = "cw"
+                b.strategy = Strategies.Circle_LOS(b, [0., 0.], 50., direction, surgeVelocity=b.design.maxSpeed)
+            """
             None
+
+
     elif type == "convoy":
         for b in assets:
             b.strategy = Strategies.HoldHeading(b, 5.0)
@@ -304,7 +311,7 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", dynamic_or
             # b.strategy = Strategies.MoveTowardAsset(b, 1.0)
 
 
-def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=20., dynamic_or_static="dynamic", filename="junk_results"):
+def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=30., dynamic_or_static="dynamic", filename="junk_results"):
     # spawn boats objects
     boat_list = [Boat.Boat() for i in range(numDefenders + numAttackers + 1)]
 
@@ -333,23 +340,12 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
     initialPositions(assets, defenders, attackers, SIMULATION_TYPE)
     initialStrategy(assets, defenders, attackers, SIMULATION_TYPE, dynamic_or_static)
 
-    # set up defense metric tools
-    if SIMULATION_TYPE == "static_ring":
-        #defenseMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=1.*np.pi/180., resolution_r=5.0, max_r=30.0, time_threshold=5.0)
-        #overseerMetric = Metrics.DefenderFrameTimeToArrive(assets, defenders, attackers)
-        None
-    elif SIMULATION_TYPE == "convoy":
-        #Metrics.DefenseMetric(assets, defenders, attackers)
-        #overseerMetric = Metrics.StaticRingMinimumTimeToArrive(assets, defenders, attackers, resolution_th=10.*np.pi/180.)
-        None
-
-    #overseer.defenseMetric = overseerMetric
     plottingMetric = Metrics.MinimumTTARings(assets, defenders, attackers)
+    overseer.defenseMetric = plottingMetric
     for attacker in attackers:
         for radius in plottingMetric.radii():
             attacker.ringPenetrationDict[radius] = None
     metrics = list()
-    #metrics.append(overseerMetric)
     metrics.append(plottingMetric)
 
     # move asset using ODE integration
@@ -369,12 +365,14 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
         t += dt
         step += 1
 
-        # update any metrics
-        for m in metrics:
-            m.measureCurrentState()
+        # update metrics once per second
+        if np.abs(np.round(t, 0) - t) < 10e-3:
+            for m in metrics:
+                m.measureCurrentState()
 
-        # update any overseers
-        # overseer.update()
+        # update any overseers once per second
+        if np.abs(np.round(t, 0) - t) < 10e-3:
+            overseer.update()
 
         if len(attackers) > 0:
             # build location arrays for defenders, attackers, and assets

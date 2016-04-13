@@ -76,6 +76,7 @@ class Boat(object):
         self._targetedByCount = 0  # number of boats that are targeting this boat
         self._pointOfInterception = None  # the location where an interception is predicted to happen
         self._evading = False
+        self._feinting = False
         self._numberOfInterceptionAttempts = 0  # the number of times a defender has attempted to intercept something
         self._originalState = None  # used to allow defenders to go back to where they were first arrayed
         self._ringPenetrationDict = dict()  # radius: (time, angle wrt asset), dictionary that logs when attackers first encroach upon asset
@@ -247,6 +248,14 @@ class Boat(object):
         self._evading = evading_in
 
     @property
+    def feinting(self):
+        return self._feinting
+
+    @feinting.setter
+    def feinting(self, feinting_in):
+        self._feinting = feinting_in
+
+    @property
     def target(self):
         return self._target
 
@@ -326,7 +335,7 @@ class Boat(object):
         return np.arctan2(dy, dx)
 
     def localAngeToPoint(self, point):
-        ga = self.globalAngleToPoint(self, point)
+        ga = self.globalAngleToPoint(point)
         if ga < 0:
             ga += 2*np.pi
         a = copy.deepcopy(self._state[4])

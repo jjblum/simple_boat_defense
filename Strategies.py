@@ -35,6 +35,16 @@ import Utility
 #  11) SEQUENCE: [get into ellipse, point away from asset, assign a defender to intercept an attacker]
 
 
+def absoluteAngleDifference(angle1, angle2):
+    while angle1 < 0.:
+        angle1 += 2*np.pi
+    while angle2 < 0.:
+        angle2 += 2*np.pi
+    angle1 = np.mod(angle1, 2*np.pi)
+    angle2 = np.mod(angle2, 2*np.pi)
+    return np.abs(angle1 - angle2)
+
+
 class Strategy(object):
     __metaclass__ = abc.ABCMeta
 
@@ -237,9 +247,10 @@ class TimedStrategySequence(StrategySequence):
            dt >= self._strategyTiming[self._currentStrategy]:
 
             # sequence is finished when last strategy in a sequence is finished or total time has run out
-            print "Strategy Sequence Finished"
+            #print "Strategy Sequence Finished"
             self._strategies.append(DoNothing(self.boat))
             self._strategy = self._strategies[-1]
+            #self.boat.strategy = DoNothing(self.boat)
             self.finished = True
 
         if (self._strategies[-1].finished or
@@ -1125,6 +1136,45 @@ class DestinationOnlyAlongCircle(Strategy):
 
     def updateFinished(self):  # need to override to get the finished status of the nested strategy!!!
         if self.boat.distanceToPoint(self._destination) < self._positionThreshold:
+            self._strategy = DoNothing(self.boat)
+        self.strategy.updateFinished()
+        self.finished = self.strategy.finished
+
+    def idealState(self):
+        return self._strategy.idealState()
+
+
+class MoveToAngleAlongCircle(Strategy):
+    # move along a circle to the destination rather than straight there
+    def __init__(self, boat, center, angle):
+        self._boat = boat
+        super(MoveToAngleAlongCircle, self).__init__(boat)
+        self._center = center
+        self._radius = boat.distanceToPoint(center)
+        self._goalAngle = angle
+        currentAngle = np.arctan2(boat.state[1]-center[1], boat.state[0]-center[0])
+        goalAngle = angle
+        if currentAngle < 0.:
+            currentAngle += 2*np.pi
+        if goalAngle < 0.:
+            goalAngle += 2*np.pi
+        if goalAngle > currentAngle:
+            direction = "ccw"
+        else:
+            direction = "cw"
+        self._strategy = Circle_LOS(boat, center, self._radius, direction, surgeVelocity=boat.design.maxSpeed)
+
+    @property  # need to override the standard controller property with the nested strategy's controller
+    def controller(self):
+        return self._strategy.controller
+
+    @controller.setter  # need to override the standard controller property with the nested strategy's controller
+    def controller(self, controller):
+        self._controller = controller
+
+    def updateFinished(self):  # need to override to get the finished status of the nested strategy!!!
+        currentAngle = np.arctan2(self.boat.state[1]-self._center[1], self.boat.state[0]-self._center[0])
+        if absoluteAngleDifference(currentAngle, self._goalAngle) < np.deg2rad(5.):
             self._strategy = DoNothing(self.boat)
         self.strategy.updateFinished()
         self.finished = self.strategy.finished

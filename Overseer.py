@@ -116,29 +116,59 @@ class Overseer(object):
         self.updateAttack()
 
     def updateAttack(self):
+        # attacker evaluates its own TTA vs. defender TTA and if an attack is favorable, moves straight at asset
         asset = self._assets[0]
-        ass_x = asset.state[0]
-        ass_y = asset.state[1]
         for attacker in self._attackers:
-            if attacker.hasBeenTargeted and not attacker.evading:
-                distance_to_interception = min(attacker.distanceToPoint(attacker.pointOfInterception), attacker.distanceToBoat(attacker.targetedBy))
-                distance_to_asset = np.sqrt(np.power(ass_x - attacker.state[0], 2) + np.power(ass_y - attacker.state[1], 2))
-                if distance_to_asset > distance_to_interception and distance_to_interception < np.random.uniform(5., 20.) and np.random.uniform(0., 1.) < 0.05:
-                    # if you can't hit the asset before interception AND the defender is within X meters
-                    attacker.evading = True
-                    if np.random.uniform(0., 1.) < 0.5:
-                        direction = "ccw"
-                    else:
-                        direction = "cw"
-                    attacker.strategy = Strategies.Circle_LOS(attacker, [ass_x, ass_y], distance_to_asset-3.0, direction, attacker.design.maxSpeed)
-                    #attacker.strategy = Strategies.TimedStrategySequence(attacker, [
-                    #    (Strategies.Circle_LOS, (attacker, [ass_x, ass_y], distance_to_asset-3.0, direction, attacker.design.maxSpeed)),
-                    #    (Strategies.MoveTowardAsset, (attacker,))
-                    #], [np.random.uniform(5.0, 30.0), 999.0])
-            if attacker.evading:
-                if np.random.uniform(0., 1.) < 0.01:  # essentially assign a random time to the circling
-                    attacker.evading = False
-                    attacker.strategy = Strategies.MoveTowardAsset(attacker)
+            x0 = attacker.state[0]
+            y0 = attacker.state[1]
+            u = np.round(attacker.state[2], 3)
+            th = wrapToPi(attacker.state[4])
+            globalAngle = asset.globalAngleToBoat(attacker)  # angle from asset to attacker in global frame
+            localAngle = attacker.localAngleToBoat(asset)  # angle from attacker to asset in attacker's frame
+            distanceToAsset = attacker.distanceToBoat(asset)
+            NG = 25
+            #fraction = np.linspace(0., 1., NG)
+            #discrete_intercept_line = (np.array([fraction*x0, fraction*y0]) + np.array([(1-fraction)*asset.state[0], (1-fraction)*asset.state[1]])).T
+            defenderTTA_dict = self._defenseMetric.minTTA_dict()
+            radii = self._defenseMetric.radii()
+            weak_angle = list()
+            #for radius in radii:
+                # TODO - deal with finding median or mean angle correctly, i.e. 0 and 360 shouldn't produce 180, and -180 and 180 shouldn't produce 0
+                # what if you describe an angle with two numbers: its angular distance from each axis
+                # 170 becomes (170, 10), -172 becomes (172, -2) - smaller of the two differences is 12
+                # 5 becomes (5, 175), -11 becomes (-11, 349) - smaller of the two differences is 16
+                # do this with a list to find the mean or median?
+                # 170, 190 should produce 180
+            #    weak_angle.append(np.deg2rad(np.floor(np.argmax(defenderTTA_dict[radius]))))
+            weak_angle = wrapToPi(np.deg2rad(np.floor(np.argmax(defenderTTA_dict[radii[2]]))))
+            # print "weak angle = {:.0f} deg".format(np.rad2deg(np.median(weak_angle)))
+            if attacker.feinting and attacker.strategy.finished:
+                attacker.feinting = False
+            #if not attacker.evading:
+            #    attacker.strategy = Strategies.MoveToAngleAlongCircle(attacker, [asset.state[0], asset.state[1]], weak_angle)
+
+
+            None
+
+
+            goodAttack = False
+            if goodAttack:
+                print "good attack"
+                attacker.evading = False
+                attacker.strategy = Strategies.MoveTowardAsset(attacker)
+            elif not attacker.feinting:
+                attacker.feinting = True
+                if np.random.uniform(0., 1.) < 0.5:
+                    direction = "cw"
+                else:
+                    direction = "ccw"
+                feint_distance = np.min((40.0, distanceToAsset/2.))
+                attacker.strategy = Strategies.TimedStrategySequence(attacker, [
+                    (Strategies.FeintTowardAsset, (attacker, feint_distance))
+                ], [30.0])
+                print "feint"
+                #attacker.strategy = Strategies.FeintTowardAsset(attacker, distanceToInitiateRetreat=20.0)
+                #attacker.strategy = Strategies.DestinationOnlyAlongCircle(attacker, [0., 0.], [distanceToAsset*np.cos(weak_angle), distanceToAsset*np.sin(weak_angle)])
 
         return
 
@@ -151,20 +181,20 @@ class Overseer(object):
                     defender.target.hasBeenTargeted = False
                     defender.target = None
                     defender.pointOfInterception = None
-                    defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 10.0, surgeVelocity=2.5)
+                    defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 20.0, surgeVelocity=2.5)
                 elif defender.pointOfInterception is not None:
                     phi = np.arctan2(defender.pointOfInterception[1] - defender.target.state[1], defender.pointOfInterception[0] - defender.target.state[0])
-                    if absoluteAngleDifference(defender.target.state[4], phi) > np.deg2rad(15.) or defender.target.state[2] < 0.1:
+                    if absoluteAngleDifference(defender.target.state[4], phi) > np.deg2rad(15.): #or defender.target.state[2] < 0.1:
                         # attacker is no longer headed to the intercept point (either by heading or slowing down)
                         defender.busy = False
-                        if self._dynamic_or_static == "dynamic":
-                            defender.strategy = Strategies.Circle_Tracking(defender, [0., 0.], defender.target, radius_growth_rate=0.0)
-                        elif self._dynamic_or_static == "static":
-                            defender.strategy = Strategies.StrategySequence(defender, [
-                                (Strategies.PointAtLocation, (defender, [defender.originalState[0], defender.originalState[1]])),
-                                (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),
-                                (Strategies.ChangeHeading, (defender, defender.originalState[4]))
-                            ])
+                        #if self._dynamic_or_static == "dynamic":
+                        #    defender.strategy = Strategies.Circle_Tracking(defender, [0., 0.], defender.target, radius_growth_rate=0.0)
+                        #elif self._dynamic_or_static == "static":
+                        defender.strategy = Strategies.StrategySequence(defender, [
+                            (Strategies.PointAtLocation, (defender, [defender.originalState[0], defender.originalState[1]])),
+                            (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),
+                            (Strategies.ChangeHeading, (defender, defender.originalState[4]))
+                        ])
                         defender.target.hasBeenTargeted = False
                         defender.target.targetedByCount -= 1
                         defender.target.pointOfInterception = None
@@ -172,11 +202,16 @@ class Overseer(object):
                     if defender.distanceToBoat(asset) > defender.target.distanceToBoat(asset):
                         # defender is totally out of position, need another boat to intercept
                         defender.busy = False
-                        defender.strategy = Strategies.MoveTowardAsset(defender)
+                        defender.strategy = Strategies.StrategySequence(defender, [
+                            (Strategies.PointAtLocation, (defender, [defender.originalState[0], defender.originalState[1]])),
+                            (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),
+                            (Strategies.ChangeHeading, (defender, defender.originalState[4]))
+                        ])
                         defender.target.hasBeenTargeted = False
                         defender.target.targetedByCount -= 1
                         defender.target.pointOfInterception = None
                         defender.pointOfInterception = None
+
 
         """
             4 possible reasons a defender should not intercept:
@@ -194,7 +229,7 @@ class Overseer(object):
         defenders_th = np.zeros((ND,))
         defender_u = np.zeros((ND,))
         for i in range(ND):
-            defender = self._defenders[i]
+            defender = able_defenders[i]
             defenders_X[i, 0] = defender.state[0]
             defenders_X[i, 1] = defender.state[1]
             defender_u[i] = defender.state[2]
@@ -204,7 +239,6 @@ class Overseer(object):
 
         # where will attackers be in T seconds? assume straight line constant velocity
         for attacker in self._attackers:
-            #if not attacker.hasBeenTargeted:
             if attacker.targetedByCount < 1:
                 x0 = attacker.state[0]
                 y0 = attacker.state[1]
@@ -213,20 +247,21 @@ class Overseer(object):
                 thdot = attacker.state[5]
                 angleToAsset = attacker.globalAngleToBoat(asset)
                 distance_to_asset = attacker.distanceToBoat(asset)
-                if absoluteAngleDifference(angleToAsset, th) < np.deg2rad(10.) and u > 0.1 and np.abs(thdot) < np.deg2rad(5.0):
+
+                ######
+                REQUIRED_TIME_BUFFER = 2.0  # extra seconds!
+                MAX_ALLOWABLE_INTERCEPT_DISTANCE = self._max_allowable_intercept_distace
+                MAX_PREDICTION_TIME = 15.0  # maximum seconds of assumed constant velocity
+                MIX_OF_INTERCEPT_AND_DEFENSIVE_ALTERNATIVE = 0.9  # 1 is fully aggressive, 0 is fully passive
+                ######
+
+                if np.abs(thdot) < np.deg2rad(5.0):
                     #print "Attacker {} is on a straight line intercept with the asset!".format(attacker.uniqueID)
                     # find the time when it will hit, assuming the asset isn't moving for now
-                    dx = asset.state[0] - x0
-                    dy = asset.state[1] - y0
-                    tx = 1./(u*np.cos(th))*dx
-                    ty = 1./(u*np.sin(th))*dy
-                    # tx and ty will be very similar, so just average them
-                    t_impact = (tx + ty)/2.
-                    NG = 25
-                    fraction = np.linspace(0., 1., NG)
-                    discrete_intercept_line = np.column_stack((x0 + fraction*t_impact*u*np.cos(th), y0 + fraction*t_impact*u*np.sin(th)))
-                    discrete_distances = np.fliplr(np.atleast_2d(fraction))*distance_to_asset
-                    discrete_distances = discrete_distances.T
+                    NG = int(np.floor(MAX_PREDICTION_TIME + 1))
+                    time_window = np.linspace(0., MAX_PREDICTION_TIME, NG)
+                    discrete_intercept_line = np.column_stack((x0 + time_window*u*np.cos(th), y0 + time_window*u*np.sin(th)))
+                    discrete_distances = np.sqrt(np.power(discrete_intercept_line[:, 0] - asset.state[0], 2) + np.power(discrete_intercept_line[:, 1] - asset.state[0], 2))
                     # starts at attacker, traverses in toward asset
 
                     # can any defenders that are not busy intercept on that line?
@@ -246,55 +281,48 @@ class Overseer(object):
                     TTA = self._thCoeff*local_angle + self._rCoeff*R + self._u0Coeff*np.repeat(defender_u, NG, axis=0)
                     # remember, each NG rows are for a single defender -- TTA shape is (ND*NG,)
                     TTA_by_defender = np.reshape(TTA, (ND, NG))
-
-                    ######
-                    REQUIRED_TIME_BUFFER = 0.0  # extra seconds!
-                    MAX_ALLOWABLE_INTERCEPT_DISTANCE = self._max_allowable_intercept_distace
-                    ######
                     able_to_intercept = np.logical_and(
-                            (np.repeat(np.atleast_2d(fraction*t_impact), ND, axis=0) - TTA_by_defender) > REQUIRED_TIME_BUFFER,
+                            np.repeat(np.atleast_2d(time_window), ND, axis=0) - TTA_by_defender > REQUIRED_TIME_BUFFER,
                             np.repeat(np.atleast_2d(discrete_distances.T), ND, axis=0) < MAX_ALLOWABLE_INTERCEPT_DISTANCE
                     )
-                    defender_TTA_dict = dict()  # defender boat object: (where it can intercept, maximum distance from asset it can intercept)
-                    max_intercept_distances = list()
+                    #able_to_intercept = (np.repeat(np.atleast_2d(time_window), ND, axis=0) - TTA_by_defender) > REQUIRED_TIME_BUFFER
+                    defender_TTA_dict = dict()  # defender boat object: minimum time to an intercept
+                    min_intercept_times = list()
                     for i in range(ND):
                         if np.any(able_to_intercept[i, :]):
-                            defender_max_intercept_distance = np.max(discrete_distances[able_to_intercept[i, :]])
-                            max_intercept_distances.append(defender_max_intercept_distance)
-                            defender_TTA_dict[able_defenders[i]] = (np.where(able_to_intercept[i, :]), defender_max_intercept_distance)
-                            # tuple --> (indices of where it can intercept, maximum distance away from asset where it can intercept)
+                            defender_min_intercept_time = np.min(time_window[able_to_intercept[i, :]])
+                            min_intercept_times.append(defender_min_intercept_time)
+                            defender_TTA_dict[able_defenders[i]] = defender_min_intercept_time
                         else:
-                            None
+                            defender_TTA_dict[able_defenders[i]] = 999.
                     """
                         now decide which defender should intercept
                         what criteria?
-                        Maximum time to intercept (less loitering?)
-                        Minimum distance from defender to intercept (?)
-                        Maximum distance from asset
-                        Closest to maximum allowable distance from asset? --> let's go with this for now
+                        Minimum time to intercept
                     """
-                    if len(max_intercept_distances) > 0:
+                    if len(min_intercept_times) > 0:
                         # someone can intercept
-                        defender_with_max_distance_index = np.argmax(np.array(max_intercept_distances))
-                        defender_with_max_distance = able_defenders[defender_with_max_distance_index]
-                        intercept_distace = min(MAX_ALLOWABLE_INTERCEPT_DISTANCE, max_intercept_distances[defender_with_max_distance_index])
-                        intercept_fraction = 1. - intercept_distace/distance_to_asset
-                        intercept_point = [x0 + intercept_fraction*t_impact*u*np.cos(th), y0 + intercept_fraction*t_impact*u*np.sin(th)]
+                        defender_with_min_time_index = np.argmax(np.array(min_intercept_times))
+                        defender_with_min_time = able_defenders[defender_with_min_time_index]
+                        intercept_time = defender_TTA_dict[defender_with_min_time]
+                        aggressive_point = np.array([x0 + intercept_time*u*np.cos(th), y0 + intercept_time*u*np.sin(th)])
+                        passive_point = np.array([asset.state[0] + 0.25*distance_to_asset*np.cos(angleToAsset + np.pi), asset.state[1] + 0.25*distance_to_asset*np.sin(angleToAsset + np.pi)])
+                        intercept_point = list(MIX_OF_INTERCEPT_AND_DEFENSIVE_ALTERNATIVE*aggressive_point + (1 - MIX_OF_INTERCEPT_AND_DEFENSIVE_ALTERNATIVE)*passive_point)
 
                         attacker.hasBeenTargeted = True
-                        attacker.targetedBy = defender_with_max_distance
+                        attacker.targetedBy = defender_with_min_time
                         attacker.targetedByCount += 1
                         attacker.pointOfInterception = copy.deepcopy(intercept_point)
-                        defender_with_max_distance.target = attacker
-                        defender_with_max_distance.pointOfInterception = copy.deepcopy(intercept_point)
-                        defender_with_max_distance.busy = True
-                        defender_with_max_distance.strategy = Strategies.StrategySequence(defender_with_max_distance, [
-                            (Strategies.PointAtLocation, (defender_with_max_distance, defender_with_max_distance.pointOfInterception)),
-                            (Strategies.DestinationOnly, (defender_with_max_distance, defender_with_max_distance.pointOfInterception, 1.0, True)),
-                            (Strategies.PointAtBoat, (defender_with_max_distance, attacker)),
-                            (Strategies.MoveTowardBoat, (defender_with_max_distance, attacker))
+                        defender_with_min_time.target = attacker
+                        defender_with_min_time.pointOfInterception = copy.deepcopy(intercept_point)
+                        defender_with_min_time.busy = True
+                        defender_with_min_time.strategy = Strategies.StrategySequence(defender_with_min_time, [
+                            (Strategies.PointAtLocation, (defender_with_min_time, defender_with_min_time.pointOfInterception)),
+                            (Strategies.DestinationOnly, (defender_with_min_time, defender_with_min_time.pointOfInterception, 1.0, True)),
+                            (Strategies.PointAtBoat, (defender_with_min_time, attacker)),
+                            (Strategies.MoveTowardBoat, (defender_with_min_time, attacker))
                         ])
-                        defender_with_max_distance.numberOfInterceptionAttempts += 1
+                        defender_with_min_time.numberOfInterceptionAttempts += 1
                         #print "Defender {} should be intercepting".format(defender_with_max_distance.uniqueID)
                         #print "Defender {} has attempted {} interceptions".format(defender_with_max_distance.uniqueID, defender_with_max_distance.numberOfInterceptionAttempts)
                     else:

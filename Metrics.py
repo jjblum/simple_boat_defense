@@ -219,9 +219,7 @@ class MinimumTTARings(DefenseMetric):
         minTTA = np.min(TTA_by_defender, axis=0)
         for i in range(minTTA.shape[0]):
             self._minTTA_dict[self._radii[i]] = minTTA[i, :]
-
-        if np.abs(np.round(self._t, 0) - self._t) < 10e-3:
-            self._minTTA.append(minTTA)
+        self._minTTA.append(minTTA)
 
 
 """
