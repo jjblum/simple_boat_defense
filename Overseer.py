@@ -41,7 +41,7 @@ class Overseer(object):
         Focuses on offense and defensive tactics.
         Limiting the amount of information an Overseer has can affect system performance.
     """
-    def __init__(self, assets, defenders, attackers, dynamic_or_static="static"):
+    def __init__(self, assets, defenders, attackers, random_or_TTA_attackers="random"):
         self._assets = assets
         self._attackers = attackers
         self._defenders = defenders
@@ -53,7 +53,7 @@ class Overseer(object):
         self._rCoeff = 0.401354269952
         self._u0Coeff = 0.0914788305811
         self._max_allowable_intercept_distace = 20.
-        self._dynamic_or_static = dynamic_or_static
+        self._atk_type = random_or_TTA_attackers
 
     @property
     def defenseMetric(self):
@@ -118,59 +118,55 @@ class Overseer(object):
     def updateAttack(self):
         # attacker evaluates its own TTA vs. defender TTA and if an attack is favorable, moves straight at asset
         asset = self._assets[0]
+
+        defenderTTA_dict = self._defenseMetric.minTTA_dict()
+        radii = self._defenseMetric.radii()
+
+        # top 3 spots to attack
+        # remember that there is 360 1-degree values for defender TTA, so the index is actually the angle
+        # TODO - make this more flexible so that TTA can be some other angle increment
+        weak_spots = wrapToPi(np.deg2rad(np.argsort(np.round(defenderTTA_dict[radii[2]], 2))[-3:]))
+
         for attacker in self._attackers:
-            x0 = attacker.state[0]
-            y0 = attacker.state[1]
-            u = np.round(attacker.state[2], 3)
-            th = wrapToPi(attacker.state[4])
-            globalAngle = asset.globalAngleToBoat(attacker)  # angle from asset to attacker in global frame
-            localAngle = attacker.localAngleToBoat(asset)  # angle from attacker to asset in attacker's frame
-            distanceToAsset = attacker.distanceToBoat(asset)
-            NG = 25
-            #fraction = np.linspace(0., 1., NG)
-            #discrete_intercept_line = (np.array([fraction*x0, fraction*y0]) + np.array([(1-fraction)*asset.state[0], (1-fraction)*asset.state[1]])).T
-            defenderTTA_dict = self._defenseMetric.minTTA_dict()
-            radii = self._defenseMetric.radii()
-            weak_angle = list()
-            #for radius in radii:
-                # TODO - deal with finding median or mean angle correctly, i.e. 0 and 360 shouldn't produce 180, and -180 and 180 shouldn't produce 0
-                # what if you describe an angle with two numbers: its angular distance from each axis
-                # 170 becomes (170, 10), -172 becomes (172, -2) - smaller of the two differences is 12
-                # 5 becomes (5, 175), -11 becomes (-11, 349) - smaller of the two differences is 16
-                # do this with a list to find the mean or median?
-                # 170, 190 should produce 180
-            #    weak_angle.append(np.deg2rad(np.floor(np.argmax(defenderTTA_dict[radius]))))
-            weak_angle = wrapToPi(np.deg2rad(np.floor(np.argmax(defenderTTA_dict[radii[2]]))))
-            # print "weak angle = {:.0f} deg".format(np.rad2deg(np.median(weak_angle)))
-            if attacker.feinting and attacker.strategy.finished:
-                attacker.feinting = False
-            #if not attacker.evading:
-            #    attacker.strategy = Strategies.MoveToAngleAlongCircle(attacker, [asset.state[0], asset.state[1]], weak_angle)
 
+            currentAngle = asset.globalAngleToBoat(attacker)
+            distanceToAsset = asset.distanceToBoat(attacker)
 
-            None
+            if self._atk_type == "TTA":
+                angleDifferences = [absoluteAngleDifference(weak_spot, currentAngle) for weak_spot in weak_spots]
+                weak_angle = weak_spots[np.argmin(angleDifferences)]
+                #print "Attacker {}: weak angle = {:.0f} deg".format(attacker.uniqueID, np.rad2deg(np.median(weak_angle)))
 
+                #print "Attacker {}: {}, isFinished = {}".format(attacker.uniqueID, type(attacker.strategy), attacker.strategy.finished)
 
-            goodAttack = False
-            if goodAttack:
-                print "good attack"
-                attacker.evading = False
-                attacker.strategy = Strategies.MoveTowardAsset(attacker)
-            elif not attacker.feinting:
-                attacker.feinting = True
-                if np.random.uniform(0., 1.) < 0.5:
-                    direction = "cw"
-                else:
-                    direction = "ccw"
-                feint_distance = np.min((40.0, distanceToAsset/2.))
-                attacker.strategy = Strategies.TimedStrategySequence(attacker, [
-                    (Strategies.FeintTowardAsset, (attacker, feint_distance))
-                ], [30.0])
-                print "feint"
-                #attacker.strategy = Strategies.FeintTowardAsset(attacker, distanceToInitiateRetreat=20.0)
-                #attacker.strategy = Strategies.DestinationOnlyAlongCircle(attacker, [0., 0.], [distanceToAsset*np.cos(weak_angle), distanceToAsset*np.sin(weak_angle)])
+                if attacker.strategy.finished and type(attacker.strategy) is Strategies.MoveToAngleAlongCircle:
+                    if np.random.uniform(0., 1.) < 0.9:
+                        attacker.strategy = Strategies.MoveTowardAsset(attacker)
+                        self.defenseMetric.attackHistory.append((attacker.time, currentAngle))
+                    else:
+                        attacker.strategy = Strategies.TimedStrategySequence(attacker, [
+                            (Strategies.FeintTowardAsset, (attacker, distanceToAsset/2., "cw"))
+                        ], [20.0])
 
-        return
+                if attacker.strategy.finished and type(attacker.strategy) is not Strategies.MoveToAngleAlongCircle:
+                        attacker.strategy = Strategies.MoveToAngleAlongCircle(attacker, [asset.state[0], asset.state[1]], weak_angle, radius=30., radius_rate=-0.25)
+
+                if type(attacker.strategy) is Strategies.MoveToAngleAlongCircle:
+                    attacker.strategy.updateGoal(weak_angle)
+
+            elif self._atk_type == "random":
+                if attacker.strategy.finished:
+                    if np.random.uniform(0., 1.) < 0.9:
+                        attacker.strategy = Strategies.MoveTowardAsset(attacker)
+                        self.defenseMetric.attackHistory.append((attacker.time, currentAngle))
+                    else:
+                        attacker.strategy = Strategies.TimedStrategySequence(attacker, [
+                            (Strategies.FeintTowardAsset, (attacker, distanceToAsset/2., "cw"))
+                        ], [20.0])
+
+                    self.defenseMetric.attackHistory.append((attacker.time, currentAngle))
+                #TODO - get the attacker to circle for some random time but record when and where it randomly attacks from
+                None
 
     def updateDefense(self):
         asset = self._assets[0]
@@ -181,12 +177,22 @@ class Overseer(object):
                     defender.target.hasBeenTargeted = False
                     defender.target = None
                     defender.pointOfInterception = None
-                    defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 20.0, surgeVelocity=2.5)
+                    #defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 20.0, surgeVelocity=2.5)
+                    defender.strategy = Strategies.StrategySequence(defender, [
+                        (Strategies.PointAtLocation, (defender, [defender.originalState[0], defender.originalState[1]])),
+                        (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),
+                        (Strategies.ChangeHeading, (defender, defender.originalState[4]))
+                    ])
                 elif defender.pointOfInterception is not None:
                     phi = np.arctan2(defender.pointOfInterception[1] - defender.target.state[1], defender.pointOfInterception[0] - defender.target.state[0])
                     if absoluteAngleDifference(defender.target.state[4], phi) > np.deg2rad(15.): #or defender.target.state[2] < 0.1:
                         # attacker is no longer headed to the intercept point (either by heading or slowing down)
                         defender.busy = False
+                        defender.target.hasBeenTargeted = False
+                        defender.target.targetedByCount -= 1
+                        defender.target.pointOfInterception = None
+                        defender.target = None
+                        defender.pointOfInterception = None
                         #if self._dynamic_or_static == "dynamic":
                         #    defender.strategy = Strategies.Circle_Tracking(defender, [0., 0.], defender.target, radius_growth_rate=0.0)
                         #elif self._dynamic_or_static == "static":
@@ -195,22 +201,20 @@ class Overseer(object):
                             (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),
                             (Strategies.ChangeHeading, (defender, defender.originalState[4]))
                         ])
+                    elif defender.distanceToBoat(asset) > defender.target.distanceToBoat(asset):
+                        # defender is totally out of position, need another boat to intercept
+                        defender.busy = False
                         defender.target.hasBeenTargeted = False
                         defender.target.targetedByCount -= 1
                         defender.target.pointOfInterception = None
+                        defender.target = None
                         defender.pointOfInterception = None
-                    if defender.distanceToBoat(asset) > defender.target.distanceToBoat(asset):
-                        # defender is totally out of position, need another boat to intercept
-                        defender.busy = False
                         defender.strategy = Strategies.StrategySequence(defender, [
                             (Strategies.PointAtLocation, (defender, [defender.originalState[0], defender.originalState[1]])),
                             (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),
                             (Strategies.ChangeHeading, (defender, defender.originalState[4]))
                         ])
-                        defender.target.hasBeenTargeted = False
-                        defender.target.targetedByCount -= 1
-                        defender.target.pointOfInterception = None
-                        defender.pointOfInterception = None
+
 
 
         """
@@ -223,36 +227,36 @@ class Overseer(object):
             If a non-busy defender doesn't intercept someting it clearly should, something else is going on erroneously
         """
 
-        able_defenders = [defender for defender in self._defenders if not defender.busy]
-        ND = len(able_defenders)
-        defenders_X = np.zeros((ND, 2))
-        defenders_th = np.zeros((ND,))
-        defender_u = np.zeros((ND,))
-        for i in range(ND):
-            defender = able_defenders[i]
-            defenders_X[i, 0] = defender.state[0]
-            defenders_X[i, 1] = defender.state[1]
-            defender_u[i] = defender.state[2]
-            defenders_th[i] = defender.state[4]
-
         # TODO - need a simple interception alternative for when the boats are close and an interception can happen easily
 
         # where will attackers be in T seconds? assume straight line constant velocity
         for attacker in self._attackers:
             if attacker.targetedByCount < 1:
+                able_defenders = [defender for defender in self._defenders if not defender.busy]
+                ND = len(able_defenders)
+                defenders_X = np.zeros((ND, 2))
+                defenders_th = np.zeros((ND,))
+                defender_u = np.zeros((ND,))
+                for i in range(ND):
+                    defender = able_defenders[i]
+                    defenders_X[i, 0] = defender.state[0]
+                    defenders_X[i, 1] = defender.state[1]
+                    defender_u[i] = defender.state[2]
+                    defenders_th[i] = defender.state[4]
+
                 x0 = attacker.state[0]
                 y0 = attacker.state[1]
                 u = np.round(attacker.state[2], 3)
                 th = wrapToPi(attacker.state[4])
                 thdot = attacker.state[5]
-                angleToAsset = attacker.globalAngleToBoat(asset)
+                angleToAsset = asset.globalAngleToBoat(attacker)#attacker.globalAngleToBoat(asset)
                 distance_to_asset = attacker.distanceToBoat(asset)
 
                 ######
                 REQUIRED_TIME_BUFFER = 2.0  # extra seconds!
                 MAX_ALLOWABLE_INTERCEPT_DISTANCE = self._max_allowable_intercept_distace
-                MAX_PREDICTION_TIME = 15.0  # maximum seconds of assumed constant velocity
-                MIX_OF_INTERCEPT_AND_DEFENSIVE_ALTERNATIVE = 0.9  # 1 is fully aggressive, 0 is fully passive
+                MAX_PREDICTION_TIME = 20.0  # maximum seconds of assumed constant velocity
+                MIX_OF_INTERCEPT_AND_DEFENSIVE_ALTERNATIVE = 1.0  # 1 is fully aggressive, 0 is fully passive
                 ######
 
                 if np.abs(thdot) < np.deg2rad(5.0):
@@ -277,7 +281,7 @@ class Overseer(object):
                     global_angle[global_angle < 0.] += 2*np.pi  # must be on [0, 2*pi] interval
                     defenders_th[defenders_th < 0.] += 2*np.pi
                     local_angle = global_angle - np.repeat(defenders_th, NG, axis=0)  # the TTA model only uses positive theta!
-                    local_angle = np.abs(wrapToPi(local_angle))  # must be on the [-pi, pi] interval
+                    local_angle = np.abs(wrapToPi(local_angle))  # must be on the [0, pi] interval
                     TTA = self._thCoeff*local_angle + self._rCoeff*R + self._u0Coeff*np.repeat(defender_u, NG, axis=0)
                     # remember, each NG rows are for a single defender -- TTA shape is (ND*NG,)
                     TTA_by_defender = np.reshape(TTA, (ND, NG))
@@ -285,29 +289,29 @@ class Overseer(object):
                             np.repeat(np.atleast_2d(time_window), ND, axis=0) - TTA_by_defender > REQUIRED_TIME_BUFFER,
                             np.repeat(np.atleast_2d(discrete_distances.T), ND, axis=0) < MAX_ALLOWABLE_INTERCEPT_DISTANCE
                     )
-                    #able_to_intercept = (np.repeat(np.atleast_2d(time_window), ND, axis=0) - TTA_by_defender) > REQUIRED_TIME_BUFFER
                     defender_TTA_dict = dict()  # defender boat object: minimum time to an intercept
                     min_intercept_times = list()
                     for i in range(ND):
                         if np.any(able_to_intercept[i, :]):
                             defender_min_intercept_time = np.min(time_window[able_to_intercept[i, :]])
-                            min_intercept_times.append(defender_min_intercept_time)
-                            defender_TTA_dict[able_defenders[i]] = defender_min_intercept_time
                         else:
-                            defender_TTA_dict[able_defenders[i]] = 999.
+                            defender_min_intercept_time = 999.
+                        defender_TTA_dict[able_defenders[i]] = defender_min_intercept_time
+                        min_intercept_times.append(defender_min_intercept_time)
                     """
                         now decide which defender should intercept
                         what criteria?
                         Minimum time to intercept
                     """
-                    if len(min_intercept_times) > 0:
+                    if np.min(min_intercept_times) < MAX_PREDICTION_TIME:
                         # someone can intercept
-                        defender_with_min_time_index = np.argmax(np.array(min_intercept_times))
+                        defender_with_min_time_index = np.argmin(np.array(min_intercept_times))
                         defender_with_min_time = able_defenders[defender_with_min_time_index]
                         intercept_time = defender_TTA_dict[defender_with_min_time]
                         aggressive_point = np.array([x0 + intercept_time*u*np.cos(th), y0 + intercept_time*u*np.sin(th)])
-                        passive_point = np.array([asset.state[0] + 0.25*distance_to_asset*np.cos(angleToAsset + np.pi), asset.state[1] + 0.25*distance_to_asset*np.sin(angleToAsset + np.pi)])
+                        passive_point = np.array([asset.state[0] + 0.25*distance_to_asset*np.cos(angleToAsset), asset.state[1] + 0.25*distance_to_asset*np.sin(angleToAsset)])
                         intercept_point = list(MIX_OF_INTERCEPT_AND_DEFENSIVE_ALTERNATIVE*aggressive_point + (1 - MIX_OF_INTERCEPT_AND_DEFENSIVE_ALTERNATIVE)*passive_point)
+                        #print intercept_point, intercept_time
 
                         attacker.hasBeenTargeted = True
                         attacker.targetedBy = defender_with_min_time

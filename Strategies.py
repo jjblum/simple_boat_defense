@@ -358,7 +358,7 @@ class SpinInPlace(Strategy):
 
 class DestinationOnly(Strategy):
     # a strategy that only returns the final destination location
-    def __init__(self, boat, destination, positionThreshold=1.0, driftDown=True):
+    def __init__(self, boat, destination, positionThreshold=3.0, driftDown=True):
         super(DestinationOnly, self).__init__(boat)
         self._destinationState = destination
         self.controller = Controllers.PointAndShootPID(boat, positionThreshold, driftDown)
@@ -500,7 +500,7 @@ class PointWithAsset(Strategy):
 
 class MoveTowardAsset(Strategy):
     # nested strategy - uses DestinationOnly with the asset as the goal
-    def __init__(self, boat, positionThreshold=1.0):
+    def __init__(self, boat, positionThreshold=3.0):
         super(MoveTowardAsset, self).__init__(boat)
         self._strategy = DestinationOnly(boat, [self.assets[0].state[0], self.assets[0].state[1]], positionThreshold)  # the lower level nested strategy
         self.controller = self._strategy.controller
@@ -524,7 +524,7 @@ class MoveTowardAsset(Strategy):
 
 class MoveTowardBoat(Strategy):
     # nested strategy - uses DestinationOnly with the asset as the goal
-    def __init__(self, boat, target, positionThreshold=1.0):
+    def __init__(self, boat, target, positionThreshold=3.0):
         super(MoveTowardBoat, self).__init__(boat)
         self._target = target
         self._strategy = DestinationOnly(boat, [self._target.state[0], self._target.state[1]], positionThreshold)  # the lower level nested strategy
@@ -630,7 +630,7 @@ class SingleSpline(Strategy):
         This distance changes as curvature changes.
         Only heading and surge velocity are controlled.
     """
-    def __init__(self, boat, destination, finalHeading=0.0, surgeVelocity=1.0, positionThreshold=1.0, N=100, driftDown=True):
+    def __init__(self, boat, destination, finalHeading=0.0, surgeVelocity=1.0, positionThreshold=3.0, N=100, driftDown=True):
         super(SingleSpline, self).__init__(boat)
         self._destination = destination
         self._surgeVelocity = surgeVelocity
@@ -883,7 +883,7 @@ class Circle_Tracking(Strategy):
 
 
 class DestinationOnlyExecutor(Executor):
-    def __init__(self, boat, destination, positionThreshold=1.0):
+    def __init__(self, boat, destination, positionThreshold=3.0):
         super(DestinationOnlyExecutor, self).__init__(boat)
         self._destination = destination
         self._positionThreshold = positionThreshold
@@ -940,16 +940,21 @@ class MoveToClosestAttacker(Strategy):
 
 
 class FeintTowardAsset(Strategy):
-    def __init__(self, boat, distanceToInitiateRetreat=20.0):
+    def __init__(self, boat, distanceToInitiateRetreat=20.0, direction=None, extraAngle=np.pi/2.):
         super(FeintTowardAsset, self).__init__(boat)
 
         initialAngle = self.assets[0].globalAngleToBoat(boat)
-        if np.random.uniform(0., 1.) > 0.5:
-            newAngle = initialAngle + np.pi/2.
-        else:
-            newAngle = initialAngle - np.pi/2.
-        self._final_x = self.assets[0].state[0] + 50.0*np.cos(newAngle)
-        self._final_y = self.assets[0].state[1] + 50.0*np.sin(newAngle)
+        if direction is None:
+            if np.random.uniform(0., 1.) > 0.5:
+                newAngle = initialAngle + extraAngle
+            else:
+                newAngle = initialAngle - extraAngle
+        elif direction == "cw":
+            newAngle = initialAngle - extraAngle
+        elif direction == "ccw":
+            newAngle = initialAngle + extraAngle
+        self._final_x = self.assets[0].state[0] + 40.0*np.cos(newAngle)
+        self._final_y = self.assets[0].state[1] + 40.0*np.sin(newAngle)
 
         self._distanceToInitiateRetreat=distanceToInitiateRetreat
         self._strategy = MoveTowardAsset(boat)
@@ -1041,7 +1046,7 @@ class DefensiveBlock(Strategy):
 
 class FollowWaypoints(Strategy):
     def __init__(self, boat, waypoints, headings=None, surgeVelocity=1.0, headingErrorSurgeCutoff=np.deg2rad(30.0),
-                 lookAhead=0.05, positionThreshold=1.0, closed_circuit=False):
+                 lookAhead=0.05, positionThreshold=3.0, closed_circuit=False):
         super(FollowWaypoints, self).__init__(boat)
         self._boat = boat
         if type(waypoints) != type(np.ndarray):
@@ -1144,13 +1149,20 @@ class DestinationOnlyAlongCircle(Strategy):
         return self._strategy.idealState()
 
 
+# TODO - finish MoveToAngleAlongCircle
 class MoveToAngleAlongCircle(Strategy):
     # move along a circle to the destination rather than straight there
-    def __init__(self, boat, center, angle):
+    def __init__(self, boat, center, angle, radius=None, radius_rate=0.0):
         self._boat = boat
         super(MoveToAngleAlongCircle, self).__init__(boat)
         self._center = center
-        self._radius = boat.distanceToPoint(center)
+        self.time = boat.time
+        self._tOld = boat.time
+        if radius is None:
+            self._radius = boat.distanceToPoint(center)
+        else:
+            self._radius = radius
+        self._radius_rate = radius_rate
         self._goalAngle = angle
         currentAngle = np.arctan2(boat.state[1]-center[1], boat.state[0]-center[0])
         goalAngle = angle
@@ -1172,12 +1184,34 @@ class MoveToAngleAlongCircle(Strategy):
     def controller(self, controller):
         self._controller = controller
 
+    def updateGoal(self, angle):
+        dt = self.boat.time - self._tOld
+        self._tOld = self.boat.time
+        self._radius += dt*self._radius_rate
+        currentAngle = np.arctan2(self.boat.state[1]-self._center[1], self.boat.state[0]-self._center[0])
+        goalAngle = angle
+        if currentAngle < 0.:
+            currentAngle += 2*np.pi
+        if goalAngle < 0.:
+            goalAngle += 2*np.pi
+        if goalAngle > currentAngle:
+            direction = "ccw"
+        else:
+            direction = "cw"
+        self._goalAngle = goalAngle
+        self._strategy = Circle_LOS(self.boat, self._center, self._radius, direction, surgeVelocity=self.boat.design.maxSpeed)
+
     def updateFinished(self):  # need to override to get the finished status of the nested strategy!!!
         currentAngle = np.arctan2(self.boat.state[1]-self._center[1], self.boat.state[0]-self._center[0])
-        if absoluteAngleDifference(currentAngle, self._goalAngle) < np.deg2rad(5.):
-            self._strategy = DoNothing(self.boat)
+
+        #print "current angle = {:.0f}, goal angle = {:.0f}  --> {:.0f} deg away from goal".format(
+        #    np.rad2deg(currentAngle),
+        #    np.rad2deg(self._goalAngle),
+        #    np.rad2deg(absoluteAngleDifference(currentAngle, self._goalAngle)))
+
+        if absoluteAngleDifference(currentAngle, self._goalAngle) < np.deg2rad(45.):
+            self.finished = True
         self.strategy.updateFinished()
-        self.finished = self.strategy.finished
 
     def idealState(self):
         return self._strategy.idealState()

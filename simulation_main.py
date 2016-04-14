@@ -19,14 +19,14 @@ PLOT_MAIN = True
 PLOT_METRIC = True
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
-DEFENDER_COUNT = 3
-ATTACKER_COUNT = 1
+DEFENDER_COUNT = 4
+ATTACKER_COUNT = 2
 BOAT_COUNT = DEFENDER_COUNT + ATTACKER_COUNT + 1  # one asset
 #print "{} ATTACKERS, {} DEFENDERS".format(ATTACKER_COUNT, BOAT_COUNT - 1 - ATTACKER_COUNT)
 MAX_DEFENDERS_PER_RING = np.arange(10.0, 100.0, 2.0)
 RADII_OF_RINGS = np.arange(10.0, 600.0, 5.0)
 ATTACKER_REMOVAL_DISTANCE = 2.0
-ASSET_REMOVAL_DISTANCE = 10.0
+ASSET_REMOVAL_DISTANCE = 2.0
 # TODO - tune this probability or figure out how to treat an interaction as a single interaction (perhaps spawn an object tracking the pairwise interaction)
 PROB_OF_ATK_REMOVAL_PER_TICK = 0.3  # every time step this probability is applied
 
@@ -203,10 +203,12 @@ def formDefenderRings(defenders):
         # defenders always start in rings around the asset
         defender_id = 0
         ring = 0
+
         while defender_id < len(defenders):
             defender_count_in_ring = min(len(defenders) - defender_id, MAX_DEFENDERS_PER_RING[ring])
             radius = RADII_OF_RINGS[ring]  # + np.random.uniform(-2.0, 2.0)
-            angles = np.arange(0.0, 2*math.pi, 2*math.pi/defender_count_in_ring)
+            angle_offset = np.random.uniform(-np.pi, np.pi)
+            angles = np.arange(0.0, 2*math.pi, 2*math.pi/defender_count_in_ring) + angle_offset
             if len(angles) == 0:
                 angles = [0.0]
             for angle in angles:
@@ -232,7 +234,8 @@ def randomAttackers(attackers):
 
 
 def groupedAttackers(attackers):
-    center = [50., -50.]
+    th = np.random.uniform(-np.pi, np.pi)
+    center = [50.*np.cos(th), 50.*np.sin(th)]
     for b in attackers:
         b.state[0] = center[0] + np.random.uniform(-5., 5.)
         b.state[1] = center[1] + np.random.uniform(-5., 5.)
@@ -257,30 +260,13 @@ def initialPositions(assets, defenders, attackers, type="static_ring"):
         randomAttackers(attackers)
 
 
-def initialStrategy(assets, defenders, attackers, type="static_ring", dynamic_or_static="static"):
+def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_TTA_attackers="random"):
     if type == "static_ring":
         for b in assets:
             None # asset does nothing
-            # b.strategy = Strategies.SingleSpline(b, [np.random.uniform(-30., 20.), np.random.uniform(-30., 20.)], np.random.uniform(-np.pi, np.pi), surgeVelocity=2.5)
-            # b.strategy = Strategies.SingleSpline(b, [20.0, 20.0], 0, surgeVelocity=2.5, driftDown=True)
-            # b.strategy = Strategies.Square(b, 1.0, 0.0, 10.0)
-            # b.strategy = Strategies.FollowWaypoints(b, np.column_stack(([1, 3, -20, -10], [0, 30, -5, -3])), surgeVelocity=2.5, closed_circuit=True)
             # TODO - turning ccw turns FASTER than turning cw???? Figure out why. Surge velocity doesn't show this.
         for b in defenders:
             None
-            #if not b.uniqueID % 4:
-            #    b.strategy = Strategies.MoveToClosestAttacker(b)
-            #else:
-            #    None
-            #if dynamic_or_static == "dynamic":
-            #    b.strategy = Strategies.Circle_LOS(b, [0., 0.], 12.0, surgeVelocity=2.5)
-            #elif dynamic_or_static == "static":
-            #    b.strategy = Strategies.DoNothing(b)
-            #b.strategy = Strategies.RandomPatrolWithinCircle(b, [0., 0.], 20.)
-            #b.strategy = Strategies.DestinationOnlyAlongCircle(b, [0., 0.], [-30., 0.])
-
-            # b.strategy = Strategies.MoveToClosestAttacker(b)
-            # b.strategy = Strategies.Circle_Tracking(b, [0., 0.], attackers[0], 0.25)
             # b.strategy = Strategies.Circle_LOS(b, [0., 0.], 20.0, surgeVelocity=2.5)
             b.strategy = Strategies.DoNothing(b)
 
@@ -295,7 +281,32 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", dynamic_or
                     direction = "cw"
                 b.strategy = Strategies.Circle_LOS(b, [0., 0.], 50., direction, surgeVelocity=b.design.maxSpeed)
             """
-            None
+            if random_or_TTA_attackers == "TTA":
+                if b is attackers[0]:
+                    #b.strategy = Strategies.TimedStrategySequence(b, [
+                    #    (Strategies.FeintTowardAsset, (b, 30.0, "cw")),
+                    #    (Strategies.MoveTowardAsset, (b,))
+                    #], [12.0, 999.])
+                    b.strategy = Strategies.TimedStrategySequence(b, [
+                        (Strategies.FeintTowardAsset, (b, 30.0, "cw"))
+                    ], [20.0])
+                else:
+                    b.strategy = Strategies.TimedStrategySequence(b, [
+                        (Strategies.DoNothing, (b,))
+                    ], [1.])
+            elif random_or_TTA_attackers == "random":
+                if b is attackers[0]:
+                    b.strategy = Strategies.TimedStrategySequence(b, [
+                        (Strategies.FeintTowardAsset, (b, 30.0, "cw"))
+                    ], [20.0])
+                else:
+                    if np.random.uniform(0., 1.) < 0:
+                        direction = "cw"
+                    else:
+                        direction = "ccw"
+                    b.strategy = Strategies.TimedStrategySequence(b, [
+                        (Strategies.Circle_LOS, (b, [0., 0.], np.random.uniform(20., 40.), direction, b.design.maxSpeed))
+                    ], [np.random.uniform(0., 60.)])
 
 
     elif type == "convoy":
@@ -311,7 +322,7 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", dynamic_or
             # b.strategy = Strategies.MoveTowardAsset(b, 1.0)
 
 
-def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=30., dynamic_or_static="dynamic", filename="junk_results"):
+def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=40., random_or_TTA_attackers="TTA", filename="junk_results"):
     # spawn boats objects
     boat_list = [Boat.Boat() for i in range(numDefenders + numAttackers + 1)]
 
@@ -320,12 +331,12 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
     for b in boat_list[-1 - numAttackers:-1]:
         b.type = "attacker"
 
-    print "{} DEFENDERS, {} ATTACKERS".format(numDefenders, numAttackers)
+    print "{} DEFENDERS, {} ATTACKERS, MAX_INTERCEPT_DIST = {:.0f}, ATTACK TYPE = {}".format(numDefenders, numAttackers, max_allowable_intercept_distance, random_or_TTA_attackers)
 
     attackers = [b for b in boat_list if b.type == "attacker"]
     defenders = [b for b in boat_list if b.type == "defender"]
     assets = [b for b in boat_list if b.type == "asset"]
-    overseer = Overseer.Overseer(assets, defenders, attackers, dynamic_or_static)
+    overseer = Overseer.Overseer(assets, defenders, attackers, random_or_TTA_attackers)
     overseer.attackers = attackers
     overseer.defenders = defenders
     overseer.assets = assets
@@ -338,7 +349,7 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
 
     # set initial positions and strategies
     initialPositions(assets, defenders, attackers, SIMULATION_TYPE)
-    initialStrategy(assets, defenders, attackers, SIMULATION_TYPE, dynamic_or_static)
+    initialStrategy(assets, defenders, attackers, SIMULATION_TYPE, random_or_TTA_attackers)
 
     plottingMetric = Metrics.MinimumTTARings(assets, defenders, attackers)
     overseer.defenseMetric = plottingMetric
@@ -353,6 +364,7 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
     t = 0.0
     dt = GLOBAL_DT
     step = 1
+    result_string = None
 
     while t < TOTAL_TIME:
         times = np.linspace(t, t+dt, 2)
@@ -433,19 +445,21 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
 
         if WITH_PLOTTING:
             plotSystem(assets, defenders, attackers, None, plottingMetric, SIMULATION_TYPE, t, real_time_zero)
+    if result_string is None:
+        result_string = "Simulation ran to max time without a result"
     print result_string + "  finished {} simulated seconds in {} real-time seconds".format(t,  time.time() - real_time_zero)
-    np.savez(filename + ".npz", minTTA=np.array(plottingMetric.minTTA()), finalTime=t, defenders_win=defenders_win)
+    np.savez(filename + ".npz", minTTA=np.array(plottingMetric.minTTA()), finalTime=t, defenders_win=defenders_win, attackHistory=plottingMetric.attackHistory)
 
 if __name__ == '__main__':
     args = sys.argv
-    # number of defenders, number of attackers, max_allowable_intercept_distance, dynamic_or_static
+    # number of defenders, number of attackers, max_allowable_intercept_distance, random_or_TTA_attackers
     args = args[1:]
     if len(args) > 0:
         numDefenders = int(args[0])
         numAttackers = int(args[1])
         max_allowable_intercept_distance = float(args[2])
-        dynamic_or_static = args[3]
+        random_or_TTA_attackers = args[3]
         filename = args[4]
-        main(numDefenders, numAttackers, max_allowable_intercept_distance, dynamic_or_static, filename)
+        main(numDefenders, numAttackers, max_allowable_intercept_distance, random_or_TTA_attackers, filename)
     else:
         main()

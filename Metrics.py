@@ -134,7 +134,7 @@ class DefenderFrameTimeToArrive(DefenseMetric):
 
 
 class MinimumTTARings(DefenseMetric):
-    def __init__(self, assets, defenders, attackers, radii=[5.0, 10.0, 20.0, 40.0], resolution_th=1.*np.pi/180.0):
+    def __init__(self, assets, defenders, attackers, radii=[10.0, 20.0, 40.0], resolution_th=np.deg2rad(1.)):
         super(MinimumTTARings, self).__init__(assets, defenders, attackers)
         self._radii = radii
         self._ths = self._ths = np.arange(0, 2*np.pi+0.001, resolution_th)
@@ -151,6 +151,7 @@ class MinimumTTARings(DefenseMetric):
         self._minTTA_dict = dict()
         self._minTTA = list()
         self._t = 0.
+        self._attackHistory = list()
 
     @property
     def t(self):
@@ -159,6 +160,10 @@ class MinimumTTARings(DefenseMetric):
     @t.setter
     def t(self, t_in):
         self._t = t_in
+
+    @property
+    def attackHistory(self):
+        return self._attackHistory
 
     def radii(self):
         return self._radii
