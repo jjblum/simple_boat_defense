@@ -170,6 +170,10 @@ class StrategySequence(Strategy):
     def strategySequence(self, strategySequence_in):
         self._strategySequence = strategySequence_in
 
+    @property
+    def strategies(self):
+        return self._strategies
+
     # override
     def actuationEffortFractions(self):
         return self._strategies[-1].actuationEffortFractions()
@@ -1209,7 +1213,7 @@ class MoveToAngleAlongCircle(Strategy):
         #    np.rad2deg(self._goalAngle),
         #    np.rad2deg(absoluteAngleDifference(currentAngle, self._goalAngle)))
 
-        if absoluteAngleDifference(currentAngle, self._goalAngle) < np.deg2rad(45.):
+        if absoluteAngleDifference(currentAngle, self._goalAngle) < np.deg2rad(15.):
             self.finished = True
         self.strategy.updateFinished()
 

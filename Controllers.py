@@ -153,7 +153,7 @@ class HeadingOnlyPID(Controller):
 
         momentFraction = np.clip(error_th_signal, -1.0, 1.0)
 
-        if math.fabs(error_th) < 1.0*math.pi/180.0 and math.fabs(state[5]) < 0.5*math.pi/180.0:
+        if math.fabs(error_th) < np.deg2rad(5.0) and math.fabs(state[5]) < np.deg2rad(1.0):
             self.finished = True
             return 0.0, 0.0
 

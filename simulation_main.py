@@ -14,19 +14,19 @@ import Overseer
 import Metrics
 
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
-WITH_PLOTTING = True
+WITH_PLOTTING = False
 PLOT_MAIN = True
 PLOT_METRIC = True
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
 DEFENDER_COUNT = 4
-ATTACKER_COUNT = 2
+ATTACKER_COUNT = 3
 BOAT_COUNT = DEFENDER_COUNT + ATTACKER_COUNT + 1  # one asset
 #print "{} ATTACKERS, {} DEFENDERS".format(ATTACKER_COUNT, BOAT_COUNT - 1 - ATTACKER_COUNT)
 MAX_DEFENDERS_PER_RING = np.arange(10.0, 100.0, 2.0)
 RADII_OF_RINGS = np.arange(10.0, 600.0, 5.0)
 ATTACKER_REMOVAL_DISTANCE = 2.0
-ASSET_REMOVAL_DISTANCE = 2.0
+ASSET_REMOVAL_DISTANCE = 5.0
 # TODO - tune this probability or figure out how to treat an interaction as a single interaction (perhaps spawn an object tracking the pairwise interaction)
 PROB_OF_ATK_REMOVAL_PER_TICK = 0.3  # every time step this probability is applied
 
@@ -224,7 +224,8 @@ def formDefenderRings(defenders):
 def randomAttackers(attackers):
     # attackers always start at some uniform random polar location, fixed radius 30
     for b in attackers:
-        radius = np.random.uniform(40., 80.)
+        #radius = np.random.uniform(40., 80.)
+        radius = 50.
         angle = np.random.uniform(0.0, 2*math.pi, 2)
         x = radius*math.cos(angle[0])
         y = radius*math.sin(angle[0])
@@ -246,8 +247,8 @@ def groupedAttackers(attackers):
 def initialPositions(assets, defenders, attackers, type="static_ring"):
     if type == "static_ring":
         formDefenderRings(defenders)
-        #randomAttackers(attackers)
-        groupedAttackers(attackers)
+        randomAttackers(attackers)
+        #groupedAttackers(attackers)
         #attackers[0].state[0] = 30.
         #attackers[0].state[1] = 0.
         #attackers[0].state[4] = np.pi
@@ -289,7 +290,7 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_
                     #], [12.0, 999.])
                     b.strategy = Strategies.TimedStrategySequence(b, [
                         (Strategies.FeintTowardAsset, (b, 30.0, "cw"))
-                    ], [20.0])
+                    ], [40.0])
                 else:
                     b.strategy = Strategies.TimedStrategySequence(b, [
                         (Strategies.DoNothing, (b,))
@@ -298,7 +299,7 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_
                 if b is attackers[0]:
                     b.strategy = Strategies.TimedStrategySequence(b, [
                         (Strategies.FeintTowardAsset, (b, 30.0, "cw"))
-                    ], [20.0])
+                    ], [40.0])
                 else:
                     if np.random.uniform(0., 1.) < 0:
                         direction = "cw"
@@ -377,13 +378,14 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
         t += dt
         step += 1
 
-        # update metrics once per second
-        if np.abs(np.round(t, 0) - t) < 10e-3:
+        # update metrics at some Hz
+        Hz = 5.0
+        if np.abs(np.round(Hz*t, 0) - Hz*t) < 10e-3:
             for m in metrics:
                 m.measureCurrentState()
 
-        # update any overseers once per second
-        if np.abs(np.round(t, 0) - t) < 10e-3:
+        # update any overseers at some Hz
+        if np.abs(np.round(Hz*t, 0) - Hz*t) < 10e-3:
             overseer.update()
 
         if len(attackers) > 0:
@@ -447,6 +449,7 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
             plotSystem(assets, defenders, attackers, None, plottingMetric, SIMULATION_TYPE, t, real_time_zero)
     if result_string is None:
         result_string = "Simulation ran to max time without a result"
+        defenders_win = False
     print result_string + "  finished {} simulated seconds in {} real-time seconds".format(t,  time.time() - real_time_zero)
     np.savez(filename + ".npz", minTTA=np.array(plottingMetric.minTTA()), finalTime=t, defenders_win=defenders_win, attackHistory=plottingMetric.attackHistory)
 
