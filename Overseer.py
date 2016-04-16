@@ -41,7 +41,7 @@ class Overseer(object):
         Focuses on offense and defensive tactics.
         Limiting the amount of information an Overseer has can affect system performance.
     """
-    def __init__(self, assets, defenders, attackers, random_or_TTA_attackers="random"):
+    def __init__(self, assets, defenders, attackers, random_or_TTA_attackers="random", static_or_dynamic_defense="static"):
         self._assets = assets
         self._attackers = attackers
         self._defenders = defenders
@@ -54,6 +54,7 @@ class Overseer(object):
         self._u0Coeff = 0.0914788305811
         self._max_allowable_intercept_distace = 20.
         self._atk_type = random_or_TTA_attackers
+        self._def_type = static_or_dynamic_defense
 
     @property
     def defenseMetric(self):
@@ -136,20 +137,13 @@ class Overseer(object):
                 angleDifferences = [absoluteAngleDifference(weak_spot, globalAngle) for weak_spot in weak_spots]
                 weak_angle = weak_spots[np.argmin(angleDifferences)]
                 #print "Attacker {}: weak angle = {:.0f} deg".format(attacker.uniqueID, np.rad2deg(np.median(weak_angle)))
-
                 #print "Attacker {}: {}, isFinished = {}".format(attacker.uniqueID, type(attacker.strategy), attacker.strategy.finished)
 
                 if attacker.strategy.finished and type(attacker.strategy) is Strategies.MoveToAngleAlongCircle:
-                    #if np.random.uniform(0., 1.) < 0.9:
                     attacker.strategy = Strategies.MoveTowardAsset(attacker)
                     self.defenseMetric.attackHistory.append((attacker.time, globalAngle))
-                    #else:
-                    #    attacker.strategy = Strategies.TimedStrategySequence(attacker, [
-                    #        (Strategies.FeintTowardAsset, (attacker, distanceToAsset/2., "cw"))
-                    #    ], [20.0])
 
                 if attacker.strategy.finished and type(attacker.strategy) is not Strategies.MoveToAngleAlongCircle:
-                        #print "move along circle"
                         attacker.strategy = Strategies.MoveToAngleAlongCircle(attacker, [asset.state[0], asset.state[1]], weak_angle, radius=np.random.uniform(20., 40.), radius_rate=-0.25)
 
                 if type(attacker.strategy) is Strategies.MoveToAngleAlongCircle:
@@ -160,31 +154,18 @@ class Overseer(object):
                     u = attacker.state[2]
                     TTA = self._thCoeff*localAngleToAsset + self._rCoeff*distanceToAsset + self._u0Coeff*u
                     if TTA < defenderTTA_dict[radii[1]][np.floor(np.rad2deg(globalAngle))]:
-                        #print "i can get to the asset right here"
                         attacker.strategy = Strategies.MoveTowardAsset(attacker)
                         self.defenseMetric.attackHistory.append((attacker.time, globalAngle))
 
             elif self._atk_type == "random":
                 if attacker.strategy.finished:
-                    #if np.random.uniform(0., 1.) < 0.9:
                     attacker.strategy = Strategies.MoveTowardAsset(attacker)
                     self.defenseMetric.attackHistory.append((attacker.time, globalAngle))
-                    #else:
-                    #    attacker.strategy = Strategies.TimedStrategySequence(attacker, [
-                    #        (Strategies.FeintTowardAsset, (attacker, distanceToAsset/2., "cw"))
-                    #    ], [20.0])
 
     def updateDefense(self):
         asset = self._assets[0]
         #print "\n"
         for defender in self._defenders:
-
-            if type(defender.strategy) is not Strategies.StrategySequence:
-                #print "Defender {}: {}, isFinished = {}".format(defender.uniqueID, type(defender.strategy), defender.strategy.finished)
-                None
-            else:
-                #print "Defender {}: {}, isFinished = {}".format(defender.uniqueID, type(defender.strategy.strategies[-1]), defender.strategy.strategies[-1].finished)
-                None
 
             if defender.target is not None:
                 if defender.target not in self._attackers:  # update defenders that have removed their targets
@@ -192,12 +173,14 @@ class Overseer(object):
                     defender.target.hasBeenTargeted = False
                     defender.target = None
                     defender.pointOfInterception = None
-                    #defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 20.0, surgeVelocity=2.5)
-                    defender.strategy = Strategies.StrategySequence(defender, [
-                        (Strategies.PointAtLocation, (defender, [defender.originalState[0], defender.originalState[1]])),
-                        (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),
-                        (Strategies.ChangeHeading, (defender, defender.originalState[4]))
-                    ])
+                    if self._def_type == "dynamic":
+                        defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 10.0, surgeVelocity=2.5, direction="ccw")
+                    elif self._def_type == "static":
+                        defender.strategy = Strategies.StrategySequence(defender, [
+                            (Strategies.PointAtLocation, (defender, [defender.originalState[0], defender.originalState[1]])),
+                            (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),
+                            (Strategies.ChangeHeading, (defender, defender.originalState[4]))
+                        ])
                 elif defender.pointOfInterception is not None:
                     phi = np.arctan2(defender.pointOfInterception[1] - defender.target.state[1], defender.pointOfInterception[0] - defender.target.state[0])
                     if absoluteAngleDifference(defender.target.state[4], phi) > np.deg2rad(15.): #or defender.target.state[2] < 0.1:
@@ -208,14 +191,14 @@ class Overseer(object):
                         defender.target.pointOfInterception = None
                         defender.target = None
                         defender.pointOfInterception = None
-                        #if self._dynamic_or_static == "dynamic":
-                        #    defender.strategy = Strategies.Circle_Tracking(defender, [0., 0.], defender.target, radius_growth_rate=0.0)
-                        #elif self._dynamic_or_static == "static":
-                        defender.strategy = Strategies.StrategySequence(defender, [
-                            (Strategies.PointAtLocation, (defender, [defender.originalState[0], defender.originalState[1]])),
-                            (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),
-                            (Strategies.ChangeHeading, (defender, defender.originalState[4]))
-                        ])
+                        if self._def_type == "dynamic":
+                            defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 10.0, surgeVelocity=2.5, direction="ccw")
+                        elif self._def_type == "static":
+                            defender.strategy = Strategies.StrategySequence(defender, [
+                                (Strategies.PointAtLocation, (defender, [defender.originalState[0], defender.originalState[1]])),
+                                (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),
+                                (Strategies.ChangeHeading, (defender, defender.originalState[4]))
+                            ])
                     elif defender.distanceToBoat(asset) > defender.target.distanceToBoat(asset):
                         # defender is totally out of position, need another boat to intercept
                         defender.busy = False
@@ -224,11 +207,14 @@ class Overseer(object):
                         defender.target.pointOfInterception = None
                         defender.target = None
                         defender.pointOfInterception = None
-                        defender.strategy = Strategies.StrategySequence(defender, [
-                            (Strategies.PointAtLocation, (defender, [defender.originalState[0], defender.originalState[1]])),
-                            (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),
-                            (Strategies.ChangeHeading, (defender, defender.originalState[4]))
-                        ])
+                        if self._def_type == "dynamic":
+                            defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 10.0, surgeVelocity=2.5, direction="ccw")
+                        elif self._def_type == "static":
+                            defender.strategy = Strategies.StrategySequence(defender, [
+                                (Strategies.PointAtLocation, (defender, [defender.originalState[0], defender.originalState[1]])),
+                                (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),
+                                (Strategies.ChangeHeading, (defender, defender.originalState[4]))
+                            ])
 
 
 

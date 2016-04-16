@@ -13,6 +13,14 @@ import Strategies
 import Overseer
 import Metrics
 
+import pymongo
+from bson.binary import Binary
+import cPickle as cp
+client = pymongo.MongoClient('localhost', 27017)
+db = client.TTA
+results = db.results
+result = dict()
+
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
 WITH_PLOTTING = False
 PLOT_MAIN = True
@@ -244,9 +252,13 @@ def groupedAttackers(attackers):
         b.state[4] = angle
 
 
-def initialPositions(assets, defenders, attackers, type="static_ring"):
+def initialPositions(assets, defenders, attackers, type="static_ring", static_or_dynamic_defense="static"):
     if type == "static_ring":
         formDefenderRings(defenders)
+        if static_or_dynamic_defense == "dynamic":
+            for b in defenders:
+                b.state[2] = b.design.maxSpeed
+                b.state[4] = assets[0].globalAngleToBoat(b) + np.pi/2.
         randomAttackers(attackers)
         #groupedAttackers(attackers)
         #attackers[0].state[0] = 30.
@@ -261,15 +273,17 @@ def initialPositions(assets, defenders, attackers, type="static_ring"):
         randomAttackers(attackers)
 
 
-def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_TTA_attackers="random"):
+def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_TTA_attackers="random", static_or_dynamic_defense="static"):
     if type == "static_ring":
         for b in assets:
             None # asset does nothing
             # TODO - turning ccw turns FASTER than turning cw???? Figure out why. Surge velocity doesn't show this.
         for b in defenders:
             None
-            # b.strategy = Strategies.Circle_LOS(b, [0., 0.], 20.0, surgeVelocity=2.5)
-            b.strategy = Strategies.DoNothing(b)
+            if static_or_dynamic_defense == "dynamic":
+                b.strategy = Strategies.Circle_LOS(b, [0., 0.], 10.0, surgeVelocity=2.5, direction="ccw")
+            elif static_or_dynamic_defense == "static":
+                b.strategy = Strategies.DoNothing(b)
 
         for b in attackers:
             """
@@ -323,7 +337,7 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_
             # b.strategy = Strategies.MoveTowardAsset(b, 1.0)
 
 
-def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=40., random_or_TTA_attackers="TTA", filename="junk_results"):
+def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=40., random_or_TTA_attackers="random", static_or_dynamic_defense="dynamic", filename="junk_results"):
     # spawn boats objects
     boat_list = [Boat.Boat() for i in range(numDefenders + numAttackers + 1)]
 
@@ -332,12 +346,12 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
     for b in boat_list[-1 - numAttackers:-1]:
         b.type = "attacker"
 
-    print "{} DEFENDERS, {} ATTACKERS, MAX_INTERCEPT_DIST = {:.0f}, ATTACK TYPE = {}".format(numDefenders, numAttackers, max_allowable_intercept_distance, random_or_TTA_attackers)
+    print "{} DEFENDERS, {} ATTACKERS, MAX_INTERCEPT_DIST = {:.0f}, ATTACK TYPE = {}, DEF TYPE = {}".format(numDefenders, numAttackers, max_allowable_intercept_distance, random_or_TTA_attackers, static_or_dynamic_defense)
 
     attackers = [b for b in boat_list if b.type == "attacker"]
     defenders = [b for b in boat_list if b.type == "defender"]
     assets = [b for b in boat_list if b.type == "asset"]
-    overseer = Overseer.Overseer(assets, defenders, attackers, random_or_TTA_attackers)
+    overseer = Overseer.Overseer(assets, defenders, attackers, random_or_TTA_attackers, static_or_dynamic_defense)
     overseer.attackers = attackers
     overseer.defenders = defenders
     overseer.assets = assets
@@ -349,8 +363,8 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
         b.assets = assets
 
     # set initial positions and strategies
-    initialPositions(assets, defenders, attackers, SIMULATION_TYPE)
-    initialStrategy(assets, defenders, attackers, SIMULATION_TYPE, random_or_TTA_attackers)
+    initialPositions(assets, defenders, attackers, SIMULATION_TYPE, static_or_dynamic_defense)
+    initialStrategy(assets, defenders, attackers, SIMULATION_TYPE, random_or_TTA_attackers, static_or_dynamic_defense)
 
     plottingMetric = Metrics.MinimumTTARings(assets, defenders, attackers)
     overseer.defenseMetric = plottingMetric
@@ -451,18 +465,29 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
         result_string = "Simulation ran to max time without a result"
         defenders_win = False
     print result_string + "  finished {} simulated seconds in {} real-time seconds".format(t,  time.time() - real_time_zero)
-    np.savez(filename + ".npz", minTTA=np.array(plottingMetric.minTTA()), finalTime=t, defenders_win=defenders_win, attackHistory=plottingMetric.attackHistory)
+    #np.savez(filename + ".npz", minTTA=np.array(plottingMetric.minTTA()), finalTime=t, defenders_win=defenders_win, attackHistory=plottingMetric.attackHistory)
+    result["num_defenders"] = numDefenders
+    result["num_attackers"] = numAttackers
+    result["max_allowable_intercept_distance"] = max_allowable_intercept_distance
+    result["atk_type"] = random_or_TTA_attackers
+    result["def_type"] = static_or_dynamic_defense
+    result["defenders_win"] = defenders_win
+    result["final_time"] = final_time
+    result["attackHistory"] = Binary(cp.dumps(plottingMetric.attackHistory, protocol=2))
+    result["minTTA"] = Binary(cp.dumps(np.array(plottingMetric.minTTA()), protocol=2))
+    result_id = results.insert_one(result).inserted_id
 
 if __name__ == '__main__':
     args = sys.argv
-    # number of defenders, number of attackers, max_allowable_intercept_distance, random_or_TTA_attackers
+    # number of defenders, number of attackers, max_allowable_intercept_distance, random_or_TTA_attackers, static_or_dynamic_defense
     args = args[1:]
     if len(args) > 0:
         numDefenders = int(args[0])
         numAttackers = int(args[1])
         max_allowable_intercept_distance = float(args[2])
         random_or_TTA_attackers = args[3]
-        filename = args[4]
-        main(numDefenders, numAttackers, max_allowable_intercept_distance, random_or_TTA_attackers, filename)
+        static_or_dynamic_defense = args[4]
+        filename = args[5]
+        main(numDefenders, numAttackers, max_allowable_intercept_distance, random_or_TTA_attackers, static_or_dynamic_defense, filename)
     else:
         main()
