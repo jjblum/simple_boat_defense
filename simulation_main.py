@@ -22,7 +22,7 @@ results = db.results
 result = dict()
 
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
-WITH_PLOTTING = False
+WITH_PLOTTING = True
 PLOT_MAIN = True
 PLOT_METRIC = True
 GLOBAL_DT = 0.05  # [s]
@@ -391,6 +391,10 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
             b.state = states[1]
         t += dt
         step += 1
+
+
+        if t > 6.:
+            asdf=0
 
         # update metrics at some Hz
         Hz = 5.0

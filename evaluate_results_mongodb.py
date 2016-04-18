@@ -15,59 +15,43 @@ def chi2_distance(histA, histB, eps = 1e-10):
     d = 0.5 * np.sum([((a - b) ** 2) / (a + b + eps) for (a, b) in zip(histA, histB)])
     return d
 
+
 def minTTA_smoothness(db_results):
-    # TODO - what makes dynamic defense effective at mitigating the advantage that TTA provided the attackers?
+    # what makes dynamic defense effective at mitigating the advantage that TTA provided the attackers?
     # Maybe smoothness - look at the how the mean (over all angles) minTTA changes over time
     # Smoothness measure (smaller is smoother) - sum the absolute differences in mean minTTA divided by the final time
     # (i.e. do an np.diff, np.abs, and np.sum). Sum all rings smoothnesses together, then compute the mean of this for each
     # combination of attack and defense
 
-    # ************* Is this causal or just correlation? i.e. clearly you win more often with a less volatile time to arrive
-    # *************    Is this volatility causing the defense to fail, or is just a symptom of a failing defense?
-    # *************    That sounds like a very hard question to answer.
-
-    # OKAY I MESSED UP BUT THIS IS ALSO INTERSTING if you average over TIME FIRST, THEN DIFF(), then you are looking at
-    #   how geometrically WARPED the TTA ring is on average over time. i.e. np.mean(minTTA, axis=0) is averaging over time
-    #   We saw that this generates
-
     circularity = list()
     volatility = list()
-    count = db_results.count()
+    final_attack_circularity = list()
     for result in db_results:
         final_time = result["final_time"]
-        minTTA = np.loads(result["minTTA"])
+        minTTA = cp.loads(result["minTTA"])
         meanOverTime_minTTA = np.mean(minTTA, axis=0)
         meanOverAngle_minTTA = np.mean(minTTA, axis=2)
         volatility.append(np.sum(np.abs(np.diff(meanOverAngle_minTTA, axis=0)))/final_time)  # the change per second through time - like a measure of volatility
         circularity.append(np.sum(np.abs(np.diff(meanOverTime_minTTA, axis=1)))/360.)  # the change per angle - like a measure of circularity (how circular it is)
-    return circularity, volatility
+        finalIndex = minTTA.shape[0]
+        metric_Hz = finalIndex/final_time
+        attackHistory = np.array(cp.loads(result["attackHistory"]))
+        if attackHistory.shape != (0,):
+            attackHistory[:, 1] *= 180./np.pi
+            attackHistory[np.where(attackHistory[:, 1] < 0), 1] += 360.
+            attackHistory[:, 1] = np.floor(attackHistory[:, 1])
+            final_attack_minTTA = minTTA[np.floor(attackHistory[-1, 0]*metric_Hz), :, :]
+            final_attack_circularity.append(np.sum(np.abs(np.diff(final_attack_minTTA, axis=1)))/360.)
+    return circularity, volatility, final_attack_circularity
 
 """
-meta_data = dict()
-NUMBER_OF_DEFENDERS = [4, 5]
-NUMBER_OF_ATTACKERS = [3, 4]
-ATTACK_TYPES = ["random", "TTA"]  # random or TTA
-DEFENSE_TYPE = ["static", "dynamic"]  # static or dynamic
-MAX_INTERCEPT_DISTANCE = [30., 40.]
-for dnum in NUMBER_OF_DEFENDERS:
-    for anum in NUMBER_OF_ATTACKERS:
-        for atype in ATTACK_TYPES:
-            for dtype in DEFENSE_TYPE:
-                for mid in MAX_INTERCEPT_DISTANCE:
-                    meta_data["num_defenders"] = dnum
-                    meta_data["num_attackers"] = anum
-                    meta_data["atk_type"] = atype
-                    meta_data["def_type"] = dtype
-                    meta_data["max_allowable_intercept_distance"] = mid
-                    meta_data_string = "{}".format(meta_data)
-                    rounds = results.find(meta_data).count()
-
-                    meta_data.update({"defenders_win": True})
-                    wins = results.find(meta_data).count()
-                    print "{}: {} wins out of {} rounds".format(meta_data_string, wins, rounds)
-
-                    meta_data.clear()
-"""
+print "\nAll RUNS:"
+winning_results = results.find({"defenders_win": True})
+rounds = float(results.count())
+wins = float(winning_results.count())
+winning_results.close()
+winning_ratio = wins/rounds*100.
+print "The defenders had a {:.1f}% winning percentage".format(winning_ratio)
 
 print "\nTTA VS. RANDOM ATTACK:"
 TTA_results = results.find({"atk_type": "TTA"})
@@ -86,6 +70,7 @@ random_results.close()
 random_winning_results.close()
 random_win_ratio = random_wins/random_rounds*100.
 print "Any random attack had a {:.1f}% winning percentage".format(random_win_ratio)
+"""
 
 print "\nSTATIC VS. DYNAMIC DEFENSE:"
 static_results = results.find({"def_type": "static"})
@@ -93,9 +78,8 @@ static_winning_results = results.find({"def_type": "static", "defenders_win": Tr
 static_losing_results = results.find({"def_type": "static", "defenders_win": False})
 static_rounds = float(static_results.count())
 static_wins = float(static_winning_results.count())
-static_losses = static_rounds - static_wins
-static_losing_circularity, static_losing_volatility = minTTA_smoothness(static_losing_results)
-static_winning_circularity, static_winning_volatility = minTTA_smoothness(static_winning_results)
+static_losing_circularity, static_losing_volatility, static_losing_minTTA_final_attack_circularity = minTTA_smoothness(static_losing_results)
+static_winning_circularity, static_winning_volatility, static_winning_minTTA_final_attack_circularity = minTTA_smoothness(static_winning_results)
 static_results.close()
 static_winning_results.close()
 static_losing_results.close()
@@ -106,36 +90,51 @@ dynamic_winning_results = results.find({"def_type": "dynamic", "defenders_win": 
 dynamic_losing_results = results.find({"def_type": "dynamic", "defenders_win": False})
 dynamic_rounds = float(dynamic_results.count())
 dynamic_wins = float(dynamic_winning_results.count())
-dynamic_losing_circularity, dynamic_losing_volatility = minTTA_smoothness(dynamic_losing_results)
-dynamic_winning_circularity, dynamic_winning_volatility = minTTA_smoothness(dynamic_winning_results)
+dynamic_losing_circularity, dynamic_losing_volatility, dynamic_losing_minTTA_final_attack_circularity = minTTA_smoothness(dynamic_losing_results)
+dynamic_winning_circularity, dynamic_winning_volatility, dynamic_winning_minTTA_final_attack_circularity = minTTA_smoothness(dynamic_winning_results)
 dynamic_results.close()
 dynamic_winning_results.close()
+dynamic_losing_results.close()
 dynamic_win_ratio = dynamic_wins/dynamic_rounds*100.
 print "Any dynamic defense had a {:.1f}% winning percentage".format(dynamic_win_ratio)
+
+plt.rcParams.update({'font.size': 22})
+final_atk_circularity_bins = np.linspace(0., 0.4, 50)
+plt.subplot(121)
+n_win, bins, patches = plt.hist(static_winning_minTTA_final_attack_circularity, bins=final_atk_circularity_bins, normed=True, facecolor='green', alpha=0.5)
+n_lose, bins, patches = plt.hist(static_losing_minTTA_final_attack_circularity, bins=final_atk_circularity_bins, normed=True, facecolor='red', alpha=0.5)
+plt.ylim(0., 30.)
+plt.title("static final attack circularity")
+plt.subplot(122)
+n_win, bins, patches = plt.hist(dynamic_winning_minTTA_final_attack_circularity, bins=final_atk_circularity_bins, normed=True, facecolor='green', alpha=0.5)
+n_lose, bins, patches = plt.hist(dynamic_losing_minTTA_final_attack_circularity, bins=final_atk_circularity_bins, normed=True, facecolor='red', alpha=0.5)
+plt.ylim(0., 30.)
+plt.title("dynamic final attack circularity")
+plt.show()
 
 volatility_bins = np.linspace(0., 1.5, 50)
 circularity_bins = np.linspace(0., 0.25, 50)
 plt.subplot(221)
-n_win, bins, patches = plt.hist(static_winning_circularity, bins=circularity_bins, normed=1, facecolor='green', alpha=0.5)
-n_lose, bins, patches = plt.hist(static_losing_circularity, bins=circularity_bins, normed=1, facecolor='red', alpha=0.5)
+n_win, bins, patches = plt.hist(static_winning_circularity, bins=circularity_bins, normed=True, facecolor='green', alpha=0.5)
+n_lose, bins, patches = plt.hist(static_losing_circularity, bins=circularity_bins, normed=True, facecolor='red', alpha=0.5)
 static_circularity_histogram_distance = chi2_distance(n_win, n_lose)
 plt.title("static circularity")
 plt.ylim(0., 35.)
 plt.subplot(222)
-n_win, bins, patches = plt.hist(dynamic_winning_circularity, bins=circularity_bins, normed=1, facecolor='green', alpha=0.5)
-n_lose, bins, patches = plt.hist(dynamic_losing_circularity, bins=circularity_bins, normed=1, facecolor='red', alpha=0.5)
+n_win, bins, patches = plt.hist(dynamic_winning_circularity, bins=circularity_bins, normed=True, facecolor='green', alpha=0.5)
+n_lose, bins, patches = plt.hist(dynamic_losing_circularity, bins=circularity_bins, normed=True, facecolor='red', alpha=0.5)
 dynamic_circularity_histogram_distance = chi2_distance(n_win, n_lose)
 plt.title("dynamic circularity")
 plt.ylim(0., 35.0)
 plt.subplot(223)
-n_win, bins, patches = plt.hist(static_winning_volatility, bins=volatility_bins, normed=1, facecolor='green', alpha=0.5)
-n_lose, bins, patches = plt.hist(static_losing_volatility, bins=volatility_bins, normed=1, facecolor='red', alpha=0.5)
+n_win, bins, patches = plt.hist(static_winning_volatility, bins=volatility_bins, normed=True, facecolor='green', alpha=0.5)
+n_lose, bins, patches = plt.hist(static_losing_volatility, bins=volatility_bins, normed=True, facecolor='red', alpha=0.5)
 static_volatility_histogram_distance = chi2_distance(n_win, n_lose)
 plt.title("static volatility")
 plt.ylim(0., 4.5)
 plt.subplot(224)
-n_win, bins, patches = plt.hist(dynamic_winning_volatility, bins=volatility_bins, normed=1, facecolor='green', alpha=0.5)
-n_lose, bins, patches = plt.hist(dynamic_losing_volatility, bins=volatility_bins, normed=1, facecolor='red', alpha=0.5)
+n_win, bins, patches = plt.hist(dynamic_winning_volatility, bins=volatility_bins, normed=True, facecolor='green', alpha=0.5)
+n_lose, bins, patches = plt.hist(dynamic_losing_volatility, bins=volatility_bins, normed=True, facecolor='red', alpha=0.5)
 dynamic_volatility_histogram_distance = chi2_distance(n_win, n_lose)
 plt.title("dynamic volatility")
 plt.ylim(0., 4.5)
@@ -211,4 +210,22 @@ two_defender_winning_results.close()
 two_defender_win_ratio = two_defender_wins/two_defender_rounds*100.
 print "2 extra defenders had a {:.1f}% winning percentage".format(two_defender_win_ratio)
 
+print "\n30 VS. 40 MAX INTERCEPT DISTANCE:"
+thirty_max_intercept_distance_results = results.find({"max_allowable_intercept_distance": 30.})
+thirty_max_intercept_distance_winning_results = results.find({"max_allowable_intercept_distance": 30., "defenders_win": True})
+thirty_max_intercept_distance_rounds = float(thirty_max_intercept_distance_results.count())
+thirty_max_intercept_distance_wins = float(thirty_max_intercept_distance_winning_results.count())
+thirty_max_intercept_distance_results.close()
+thirty_max_intercept_distance_winning_results.close()
+thirty_max_intercept_distance_win_ratio = thirty_max_intercept_distance_wins/thirty_max_intercept_distance_rounds*100.
+print "Max intercept distance = 30 had a {:.1f}% winning percentage".format(thirty_max_intercept_distance_win_ratio)
+forty_max_intercept_distance_results = results.find({"max_allowable_intercept_distance": 40.})
+forty_max_intercept_distance_winning_results = results.find({"max_allowable_intercept_distance": 40., "defenders_win": True})
+forty_max_intercept_distance_rounds = float(forty_max_intercept_distance_results.count())
+forty_max_intercept_distance_wins = float(forty_max_intercept_distance_winning_results.count())
+forty_max_intercept_distance_results.close()
+forty_max_intercept_distance_winning_results.close()
+forty_max_intercept_distance_win_ratio = forty_max_intercept_distance_wins/forty_max_intercept_distance_rounds*100.
+print "Max intercept distance = 40 had a {:.1f}% winning percentage".format(forty_max_intercept_distance_win_ratio)
 
+results.close()

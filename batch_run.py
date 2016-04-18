@@ -2,14 +2,14 @@ import sys
 import os
 import subprocess
 
-NUMBER_OF_RUNS = 96
+NUMBER_OF_RUNS = 100
 NUMBER_PER_BATCH = 20
 
-NUMBER_OF_DEFENDERS = [4, 5]
-NUMBER_OF_ATTACKERS = [3, 4]
+NUMBER_OF_DEFENDERS = [4]
+NUMBER_OF_ATTACKERS = [3]
 ATTACK_TYPES = ["random", "TTA"]  # random or TTA
 DEFENSE_TYPE = ["static", "dynamic"]  # static or dynamic
-MAX_INTERCEPT_DISTANCE = [30., 40.]
+MAX_INTERCEPT_DISTANCE = [40.]
 
 path = os.path.dirname(os.path.realpath(__file__))
 
