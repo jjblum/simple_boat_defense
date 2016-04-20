@@ -27,8 +27,8 @@ PLOT_MAIN = True
 PLOT_METRIC = True
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
-DEFENDER_COUNT = 4
-ATTACKER_COUNT = 3
+DEFENDER_COUNT = 3
+ATTACKER_COUNT = 4
 BOAT_COUNT = DEFENDER_COUNT + ATTACKER_COUNT + 1  # one asset
 #print "{} ATTACKERS, {} DEFENDERS".format(ATTACKER_COUNT, BOAT_COUNT - 1 - ATTACKER_COUNT)
 MAX_DEFENDERS_PER_RING = np.arange(10.0, 100.0, 2.0)
@@ -134,21 +134,23 @@ def plotSystem(assets, defenders, attackers, defenderFrameMetric, assetFrameMetr
         asset_removal_th = np.arange(0., 2*np.pi+0.001, np.deg2rad(5.))
         ax_main.draw_artist(ax_main.plot(assets_x[0] + ASSET_REMOVAL_DISTANCE*np.cos(asset_removal_th), assets_y[0] + ASSET_REMOVAL_DISTANCE*np.sin(asset_removal_th), 'r.', markersize=3)[0])
 
-        # TODO - put this in the metric plot instead, of course
-        #for d in defenders:
-        #    #if d.TTAData is not None:
-        #    thickness = 3.
-        #    for TTAData in d.TTAData:
-        #        ax_main.draw_artist(ax_main.plot(TTAData[:, 0], TTAData[:, 1], 'm-', linewidth=thickness)[0])
-        #        thickness -= 1.
-        #        center = d.TTAPolygon.center()
-        #        ax_main.draw_artist(ax_main.plot(center[0], center[1], 'ms')[0])
+
+        """
+        for d in defenders:
+            #if d.TTAData is not None:
+            thickness = 3.
+            for TTAData in d.TTAData:
+                ax_main.draw_artist(ax_main.plot(TTAData[:, 0], TTAData[:, 1], 'm-', linewidth=thickness)[0])
+                thickness -= 1.
+                #center = d.TTAPolygon.center()
+                #ax_main.draw_artist(ax_main.plot(center[0], center[1], 'ms')[0])
         #for a in attackers:
         #    size = 14.
         #    for T in defenderFrameMetric.timeThreshold:
         #        ax_main.draw_artist(ax_main.plot(a.state[0] + a.state[2]*np.cos(a.state[4])*T,
         #                                         a.state[1] + a.state[2]*np.sin(a.state[4])*T, 'mo', markersize=size)[0])
         #        size -= 4.
+        """
 
 
         for boat in assets + defenders + attackers:
@@ -192,6 +194,7 @@ def plotSystem(assets, defenders, attackers, defenderFrameMetric, assetFrameMetr
             ax_main.draw_artist(attacker_arrow)
         for asset_arrow in asset_arrows:
             ax_main.draw_artist(asset_arrow)
+
         fig.canvas.blit(ax_main.bbox)
 
     if PLOT_METRIC:
@@ -261,8 +264,10 @@ def initialPositions(assets, defenders, attackers, type="static_ring", static_or
                 b.state[4] = assets[0].globalAngleToBoat(b) + np.pi/2.
         randomAttackers(attackers)
         #groupedAttackers(attackers)
-        #attackers[0].state[0] = 30.
-        #attackers[0].state[1] = 0.
+        #defenders[0].state[0] = 10.
+        #defenders[0].state[1] = 0.
+        #ttackers[0].state[0] = 30.
+        #attackers[0].state[1] = -30.
         #attackers[0].state[4] = np.pi
         #attackers[0].state[2] = attackers[0].design.maxSpeed
 
@@ -337,7 +342,7 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_
             # b.strategy = Strategies.MoveTowardAsset(b, 1.0)
 
 
-def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=40., random_or_TTA_attackers="random", static_or_dynamic_defense="dynamic", filename="junk_results"):
+def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=40., random_or_TTA_attackers="TTA", static_or_dynamic_defense="static", filename="junk_results"):
     # spawn boats objects
     boat_list = [Boat.Boat() for i in range(numDefenders + numAttackers + 1)]
 
@@ -367,12 +372,14 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
     initialStrategy(assets, defenders, attackers, SIMULATION_TYPE, random_or_TTA_attackers, static_or_dynamic_defense)
 
     plottingMetric = Metrics.MinimumTTARings(assets, defenders, attackers)
+    #defenderFrameMetric = Metrics.DefenderFrameTimeToArrive(assets, defenders, attackers, [5., 10.])
     overseer.defenseMetric = plottingMetric
     for attacker in attackers:
         for radius in plottingMetric.radii():
             attacker.ringPenetrationDict[radius] = None
     metrics = list()
     metrics.append(plottingMetric)
+    #metrics.append(defenderFrameMetric)
 
     # move asset using ODE integration
     real_time_zero = time.time()
@@ -391,10 +398,6 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
             b.state = states[1]
         t += dt
         step += 1
-
-
-        if t > 6.:
-            asdf=0
 
         # update metrics at some Hz
         Hz = 5.0
@@ -424,14 +427,6 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
                 X_assets[j, 0] = boat.state[0]
                 X_assets[j, 1] = boat.state[1]
             atk_vs_asset_pairwise_distances = spatial.distance.cdist(X_assets, X_attackers)
-
-            # record when attackers penetrate certain perimeters
-            #for j in range(len(attackers)):
-            #    attacker = attackers[j]
-            #    for radius in plottingMetric.radii():
-            #        if attacker.ringPenetrationDict[radius] is None:
-            #            if atk_vs_asset_pairwise_distances[0, j] < radius:
-            #                attacker.ringPenetrationDict[radius] = t
 
             overseer.atk_vs_asset_pairwise_distances = atk_vs_asset_pairwise_distances  # inform the overseer
             atk_vs_asset_minimum_distance = np.min(atk_vs_asset_pairwise_distances, 1)

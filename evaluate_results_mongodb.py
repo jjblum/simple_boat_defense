@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
+import copy
 import pymongo
 from pymongo import MongoClient
 from bson.binary import Binary
@@ -19,10 +19,7 @@ def chi2_distance(histA, histB, eps = 1e-10):
 def minTTA_smoothness(db_results):
     # what makes dynamic defense effective at mitigating the advantage that TTA provided the attackers?
     # Maybe smoothness - look at the how the mean (over all angles) minTTA changes over time
-    # Smoothness measure (smaller is smoother) - sum the absolute differences in mean minTTA divided by the final time
-    # (i.e. do an np.diff, np.abs, and np.sum). Sum all rings smoothnesses together, then compute the mean of this for each
-    # combination of attack and defense
-
+    # Smoothness measure (smaller is smoother)
     circularity = list()
     volatility = list()
     final_attack_circularity = list()
@@ -44,6 +41,44 @@ def minTTA_smoothness(db_results):
             final_attack_circularity.append(np.sum(np.abs(np.diff(final_attack_minTTA, axis=1)))/360.)
     return circularity, volatility, final_attack_circularity
 
+
+def gather_results(dictionary, collection=results, smoothness=False):
+    winning_dict = copy.deepcopy(dictionary)
+    winning_dict.update({"defenders_win": True})
+    losing_dict = copy.deepcopy(dictionary)
+    losing_dict.update({"defenders_win": False})
+    general_results = collection.find(dictionary)
+    winning_results = collection.find(winning_dict)
+    losing_results = collection.find(losing_dict)
+    rounds = float(general_results.count())
+    wins = float(winning_results.count())
+    wins_ratio = wins/rounds*100.
+    if smoothness:
+        losing_circularity, losing_volatility, losing_final_atk_circularity = minTTA_smoothness(losing_results)
+        winning_circularity, winning_volatility, winning_final_atk_circularity = minTTA_smoothness(winning_results)
+        general_results.close()
+        winning_results.close()
+        losing_results.close()
+        return wins_ratio, (winning_circularity, losing_circularity), (winning_volatility, losing_volatility), (winning_final_atk_circularity, losing_final_atk_circularity)
+    else:
+        return wins_ratio
+
+def winner_loser_histogram_plot(winners, losers, title_string, plot_type="final_atk"):
+    if plot_type == "final_atk":
+        bins = np.linspace(0., 0.4, 50)
+        ylim = 30.
+    elif plot_type == "circularity":
+        bins = np.linspace(0., 0.25, 50)
+        plt.ylim(0., 35.)
+    elif plot_type == "volatility":
+        bins = np.linspace(0., 1.5, 50)
+        plt.ylim(0., 4.5)
+    n_win, bins, patches = plt.hist(winners, bins=bins, normed=True, facecolor='green', alpha=0.5)
+    n_lose, bins, patches = plt.hist(losers, bins=bins, normed=True, facecolor='red', alpha=0.5)
+    plt.ylim(0., ylim)
+    plt.title(title_string)
+    return chi2_distance(n_win, n_lose)
+
 """
 print "\nAll RUNS:"
 winning_results = results.find({"defenders_win": True})
@@ -53,91 +88,34 @@ winning_results.close()
 winning_ratio = wins/rounds*100.
 print "The defenders had a {:.1f}% winning percentage".format(winning_ratio)
 
+
 print "\nTTA VS. RANDOM ATTACK:"
-TTA_results = results.find({"atk_type": "TTA"})
-TTA_winning_results = results.find({"atk_type": "TTA", "defenders_win": True})
-TTA_rounds = float(TTA_results.count())
-TTA_wins = float(TTA_winning_results.count())
-TTA_results.close()
-TTA_winning_results.close()
-TTA_win_ratio = TTA_wins/TTA_rounds*100.
-print "Any attack using TTA had a {:.1f}% winning percentage".format(TTA_win_ratio)
-random_results = results.find({"atk_type": "random"})
-random_winning_results = results.find({"atk_type": "random", "defenders_win": True})
-random_rounds = float(random_results.count())
-random_wins = float(random_winning_results.count())
-random_results.close()
-random_winning_results.close()
-random_win_ratio = random_wins/random_rounds*100.
-print "Any random attack had a {:.1f}% winning percentage".format(random_win_ratio)
-"""
+TTA_results = gather_results({"atk_type": "TTA"})
+print "Any attack using TTA had a {:.1f}% winning percentage".format(TTA_results)
+random_results = gather_results({"atk_type": "random"})
+print "Any random attack had a {:.1f}% winning percentage".format(random_results)
+
 
 print "\nSTATIC VS. DYNAMIC DEFENSE:"
-static_results = results.find({"def_type": "static"})
-static_winning_results = results.find({"def_type": "static", "defenders_win": True})
-static_losing_results = results.find({"def_type": "static", "defenders_win": False})
-static_rounds = float(static_results.count())
-static_wins = float(static_winning_results.count())
-static_losing_circularity, static_losing_volatility, static_losing_minTTA_final_attack_circularity = minTTA_smoothness(static_losing_results)
-static_winning_circularity, static_winning_volatility, static_winning_minTTA_final_attack_circularity = minTTA_smoothness(static_winning_results)
-static_results.close()
-static_winning_results.close()
-static_losing_results.close()
-static_win_ratio = static_wins/static_rounds*100.
-print "Any static defense had a {:.1f}% winning percentage".format(static_win_ratio)
-dynamic_results = results.find({"def_type": "dynamic"})
-dynamic_winning_results = results.find({"def_type": "dynamic", "defenders_win": True})
-dynamic_losing_results = results.find({"def_type": "dynamic", "defenders_win": False})
-dynamic_rounds = float(dynamic_results.count())
-dynamic_wins = float(dynamic_winning_results.count())
-dynamic_losing_circularity, dynamic_losing_volatility, dynamic_losing_minTTA_final_attack_circularity = minTTA_smoothness(dynamic_losing_results)
-dynamic_winning_circularity, dynamic_winning_volatility, dynamic_winning_minTTA_final_attack_circularity = minTTA_smoothness(dynamic_winning_results)
-dynamic_results.close()
-dynamic_winning_results.close()
-dynamic_losing_results.close()
-dynamic_win_ratio = dynamic_wins/dynamic_rounds*100.
-print "Any dynamic defense had a {:.1f}% winning percentage".format(dynamic_win_ratio)
-
+static_results = gather_results({"def_type": "static"}, smoothness=True)
+print "Any static defense had a {:.1f}% winning percentage".format(static_results[0])
+dynamic_results = gather_results({"def_type": "dynamic"}, smoothness=True)
+print "Any dynamic defense had a {:.1f}% winning percentage".format(dynamic_results[0])
 plt.rcParams.update({'font.size': 22})
-final_atk_circularity_bins = np.linspace(0., 0.4, 50)
 plt.subplot(121)
-n_win, bins, patches = plt.hist(static_winning_minTTA_final_attack_circularity, bins=final_atk_circularity_bins, normed=True, facecolor='green', alpha=0.5)
-n_lose, bins, patches = plt.hist(static_losing_minTTA_final_attack_circularity, bins=final_atk_circularity_bins, normed=True, facecolor='red', alpha=0.5)
-plt.ylim(0., 30.)
-plt.title("static final attack circularity")
+winner_loser_histogram_plot(static_results[3][0], static_results[3][1], "static final attack circularity", "final_atk")
 plt.subplot(122)
-n_win, bins, patches = plt.hist(dynamic_winning_minTTA_final_attack_circularity, bins=final_atk_circularity_bins, normed=True, facecolor='green', alpha=0.5)
-n_lose, bins, patches = plt.hist(dynamic_losing_minTTA_final_attack_circularity, bins=final_atk_circularity_bins, normed=True, facecolor='red', alpha=0.5)
-plt.ylim(0., 30.)
-plt.title("dynamic final attack circularity")
+winner_loser_histogram_plot(dynamic_results[3][0], dynamic_results[3][1], "dynamic final attack circularity", "final_atk")
 plt.show()
 
-volatility_bins = np.linspace(0., 1.5, 50)
-circularity_bins = np.linspace(0., 0.25, 50)
 plt.subplot(221)
-n_win, bins, patches = plt.hist(static_winning_circularity, bins=circularity_bins, normed=True, facecolor='green', alpha=0.5)
-n_lose, bins, patches = plt.hist(static_losing_circularity, bins=circularity_bins, normed=True, facecolor='red', alpha=0.5)
-static_circularity_histogram_distance = chi2_distance(n_win, n_lose)
-plt.title("static circularity")
-plt.ylim(0., 35.)
+static_circularity_histogram_distance = winner_loser_histogram_plot(static_results[1][0], static_results[1][1], "static circularity", "circularity")
 plt.subplot(222)
-n_win, bins, patches = plt.hist(dynamic_winning_circularity, bins=circularity_bins, normed=True, facecolor='green', alpha=0.5)
-n_lose, bins, patches = plt.hist(dynamic_losing_circularity, bins=circularity_bins, normed=True, facecolor='red', alpha=0.5)
-dynamic_circularity_histogram_distance = chi2_distance(n_win, n_lose)
-plt.title("dynamic circularity")
-plt.ylim(0., 35.0)
+dynamic_circularity_histogram_distance = winner_loser_histogram_plot(dynamic_results[1][0], dynamic_results[1][1], "dynamic circularity", "circularity")
 plt.subplot(223)
-n_win, bins, patches = plt.hist(static_winning_volatility, bins=volatility_bins, normed=True, facecolor='green', alpha=0.5)
-n_lose, bins, patches = plt.hist(static_losing_volatility, bins=volatility_bins, normed=True, facecolor='red', alpha=0.5)
-static_volatility_histogram_distance = chi2_distance(n_win, n_lose)
-plt.title("static volatility")
-plt.ylim(0., 4.5)
+static_volatility_histogram_distance = winner_loser_histogram_plot(static_results[2][0], static_results[2][1], "static volatility", "volatility")
 plt.subplot(224)
-n_win, bins, patches = plt.hist(dynamic_winning_volatility, bins=volatility_bins, normed=True, facecolor='green', alpha=0.5)
-n_lose, bins, patches = plt.hist(dynamic_losing_volatility, bins=volatility_bins, normed=True, facecolor='red', alpha=0.5)
-dynamic_volatility_histogram_distance = chi2_distance(n_win, n_lose)
-plt.title("dynamic volatility")
-plt.ylim(0., 4.5)
+dynamic_volatility_histogram_distance = winner_loser_histogram_plot(dynamic_results[2][0], dynamic_results[2][1], "dynamic volatility", "volatility")
 print "\nTTA SMOOTHNESS MEASURES:"
 print "Static circularity chi-squared distance between winners and losers = {:.3f}".format(static_circularity_histogram_distance)
 print "Dynamic circularity chi-squared distance between winners and losers = {:.3f}".format(dynamic_circularity_histogram_distance)
@@ -147,85 +125,36 @@ plt.show()
 
 
 print "\nTTA ATTACK, STATIC VS. DYNAMIC DEFENSE:"
-TTA_static_results = results.find({"atk_type": "TTA", "def_type": "static"})
-TTA_static_winning_results = results.find({"atk_type": "TTA", "defenders_win": True, "def_type": "static"})
-TTA_static_rounds = float(TTA_static_results.count())
-TTA_static_wins = float(TTA_static_winning_results.count())
-TTA_static_results.close()
-TTA_static_winning_results.close()
-TTA_static_win_ratio = TTA_static_wins/TTA_static_rounds*100.
-print "TTA attack, static defense had a {:.1f}% winning percentage".format(TTA_static_win_ratio)
-TTA_dynamic_results = results.find({"atk_type": "TTA", "def_type": "dynamic"})
-TTA_dynamic_winning_results = results.find({"atk_type": "TTA", "defenders_win": True, "def_type": "dynamic"})
-TTA_dynamic_rounds = float(TTA_dynamic_results.count())
-TTA_dynamic_wins = float(TTA_dynamic_winning_results.count())
-TTA_dynamic_results.close()
-TTA_dynamic_winning_results.close()
-TTA_dynamic_win_ratio = TTA_dynamic_wins/TTA_dynamic_rounds*100.
-print "TTA attack, dynamic defense had a {:.1f}% winning percentage".format(TTA_dynamic_win_ratio)
+TTA_static_results = gather_results({"atk_type": "TTA", "def_type": "static"})
+print "TTA attack, static defense had a {:.1f}% winning percentage".format(TTA_static_results)
+TTA_dynamic_results = gather_results({"atk_type": "TTA", "def_type": "dynamic"})
+print "TTA attack, dynamic defense had a {:.1f}% winning percentage".format(TTA_dynamic_results)
+
 
 print "\nRANDOM ATTACK, STATIC VS. DYNAMIC DEFENSE:"
-random_static_results = results.find({"atk_type": "random", "def_type": "static"})
-random_static_winning_results = results.find({"atk_type": "random", "defenders_win": True, "def_type": "static"})
-random_static_rounds = float(random_static_results.count())
-random_static_wins = float(random_static_winning_results.count())
-random_static_results.close()
-random_static_winning_results.close()
-random_static_win_ratio = random_static_wins/random_static_rounds*100.
-print "random attack, static defense had a {:.1f}% winning percentage".format(random_static_win_ratio)
-random_dynamic_results = results.find({"atk_type": "random", "def_type": "dynamic"})
-random_dynamic_winning_results = results.find({"atk_type": "random", "defenders_win": True, "def_type": "dynamic"})
-random_dynamic_rounds = float(random_dynamic_results.count())
-random_dynamic_wins = float(random_dynamic_winning_results.count())
-random_dynamic_results.close()
-random_dynamic_winning_results.close()
-random_dynamic_win_ratio = random_dynamic_wins/random_dynamic_rounds*100.
-print "random attack, dynamic defense had a {:.1f}% winning percentage".format(random_dynamic_win_ratio)
+random_static_results = gather_results({"atk_type": "random", "def_type": "static"})
+print "random attack, static defense had a {:.1f}% winning percentage".format(random_static_results)
+random_dynamic_results = gather_results({"atk_type": "random", "def_type": "dynamic"})
+print "random attack, dynamic defense had a {:.1f}% winning percentage".format(random_dynamic_results)
+
 
 print "\n***** Notice how dynamic defense mitigates the advantage that TTA knowledge provides the attackers *****"
 
+
 print "\n0 EXTRA DEFENDERS VS. 1 EXTRA DEFENDER VS. 2 EXTRA DEFENDERS:"
-zero_defender_results = results.find({"num_attackers": 4, "num_defenders": 4})
-zero_defender_winning_results = results.find({"num_attackers": 4, "num_defenders": 4, "defenders_win": True})
-zero_defender_rounds = float(zero_defender_results.count())
-zero_defender_wins = float(zero_defender_winning_results.count())
-zero_defender_results.close()
-zero_defender_winning_results.close()
-zero_defender_win_ratio = zero_defender_wins/zero_defender_rounds*100.
-print "0 extra defenders had a {:.1f}% winning percentage".format(zero_defender_win_ratio)
-one_defender_results = results.find({"num_attackers": 4, "num_defenders": 5}, {"num_attackers": 3, "num_defenders": 4})
-one_defender_winning_results = results.find({"num_attackers": 4, "num_defenders": 5, "defenders_win": True}, {"num_attackers": 3, "num_defenders": 4, "defenders_win": True})
-one_defender_rounds = float(one_defender_results.count())
-one_defender_wins = float(one_defender_winning_results.count())
-one_defender_results.close()
-one_defender_winning_results.close()
-one_defender_win_ratio = one_defender_wins/one_defender_rounds*100.
-print "1 extra defender had a {:.1f}% winning percentage".format(one_defender_win_ratio)
-two_defender_results = results.find({"num_attackers": 3, "num_defenders": 5})
-two_defender_winning_results = results.find({"num_attackers": 3, "num_defenders": 5, "defenders_win": True})
-two_defender_rounds = float(two_defender_results.count())
-two_defender_wins = float(two_defender_winning_results.count())
-two_defender_results.close()
-two_defender_winning_results.close()
-two_defender_win_ratio = two_defender_wins/two_defender_rounds*100.
-print "2 extra defenders had a {:.1f}% winning percentage".format(two_defender_win_ratio)
+zero_defender_results = gather_results({"num_attackers": 4, "num_defenders": 4}, smoothness=True)
+print "0 extra defenders had a {:.1f}% winning percentage".format(zero_defender_results[0])
+"""
+one_defender_results = gather_results({"num_attackers": 4, "num_defenders": 5}, {"num_attackers": 3, "num_defenders": 4}, smoothness=True)
+print "1 extra defender had a {:.1f}% winning percentage".format(one_defender_results)
+two_defender_results = gather_results({"num_attackers": 3, "num_defenders": 5})
+print "2 extra defenders had a {:.1f}% winning percentage".format(two_defender_results)
+
 
 print "\n30 VS. 40 MAX INTERCEPT DISTANCE:"
-thirty_max_intercept_distance_results = results.find({"max_allowable_intercept_distance": 30.})
-thirty_max_intercept_distance_winning_results = results.find({"max_allowable_intercept_distance": 30., "defenders_win": True})
-thirty_max_intercept_distance_rounds = float(thirty_max_intercept_distance_results.count())
-thirty_max_intercept_distance_wins = float(thirty_max_intercept_distance_winning_results.count())
-thirty_max_intercept_distance_results.close()
-thirty_max_intercept_distance_winning_results.close()
-thirty_max_intercept_distance_win_ratio = thirty_max_intercept_distance_wins/thirty_max_intercept_distance_rounds*100.
-print "Max intercept distance = 30 had a {:.1f}% winning percentage".format(thirty_max_intercept_distance_win_ratio)
-forty_max_intercept_distance_results = results.find({"max_allowable_intercept_distance": 40.})
-forty_max_intercept_distance_winning_results = results.find({"max_allowable_intercept_distance": 40., "defenders_win": True})
-forty_max_intercept_distance_rounds = float(forty_max_intercept_distance_results.count())
-forty_max_intercept_distance_wins = float(forty_max_intercept_distance_winning_results.count())
-forty_max_intercept_distance_results.close()
-forty_max_intercept_distance_winning_results.close()
-forty_max_intercept_distance_win_ratio = forty_max_intercept_distance_wins/forty_max_intercept_distance_rounds*100.
-print "Max intercept distance = 40 had a {:.1f}% winning percentage".format(forty_max_intercept_distance_win_ratio)
+thirty_max_intercept_distance_results = gather_results({"max_allowable_intercept_distance": 30.})
+print "Max intercept distance = 30 had a {:.1f}% winning percentage".format(thirty_max_intercept_distance_results)
+forty_max_intercept_distance_results = gather_results({"max_allowable_intercept_distance": 40.})
+print "Max intercept distance = 40 had a {:.1f}% winning percentage".format(forty_max_intercept_distance_results)
 
 results.close()

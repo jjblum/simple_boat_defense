@@ -306,32 +306,33 @@ class Overseer(object):
                         what criteria?
                         Minimum time to intercept
                     """
-                    if np.min(min_intercept_times) < MAX_PREDICTION_TIME:
-                        # someone can intercept
-                        defender_with_min_time_index = np.argmin(np.array(min_intercept_times))
-                        defender_with_min_time = able_defenders[defender_with_min_time_index]
-                        intercept_time = defender_TTA_dict[defender_with_min_time]
-                        aggressive_point = np.array([x0 + intercept_time*u*np.cos(th), y0 + intercept_time*u*np.sin(th)])
-                        passive_point = np.array([asset.state[0] + 0.25*distance_to_asset*np.cos(angleToAsset), asset.state[1] + 0.25*distance_to_asset*np.sin(angleToAsset)])
-                        intercept_point = list(MIX_OF_INTERCEPT_AND_DEFENSIVE_ALTERNATIVE*aggressive_point + (1 - MIX_OF_INTERCEPT_AND_DEFENSIVE_ALTERNATIVE)*passive_point)
-                        #print intercept_point, intercept_time
+                    if len(min_intercept_times) > 0:
+                        if np.min(min_intercept_times) < MAX_PREDICTION_TIME:
+                            # someone can intercept
+                            defender_with_min_time_index = np.argmin(np.array(min_intercept_times))
+                            defender_with_min_time = able_defenders[defender_with_min_time_index]
+                            intercept_time = defender_TTA_dict[defender_with_min_time]
+                            aggressive_point = np.array([x0 + intercept_time*u*np.cos(th), y0 + intercept_time*u*np.sin(th)])
+                            passive_point = np.array([asset.state[0] + 0.25*distance_to_asset*np.cos(angleToAsset), asset.state[1] + 0.25*distance_to_asset*np.sin(angleToAsset)])
+                            intercept_point = list(MIX_OF_INTERCEPT_AND_DEFENSIVE_ALTERNATIVE*aggressive_point + (1 - MIX_OF_INTERCEPT_AND_DEFENSIVE_ALTERNATIVE)*passive_point)
+                            #print intercept_point, intercept_time
 
-                        attacker.hasBeenTargeted = True
-                        attacker.targetedBy = defender_with_min_time
-                        attacker.targetedByCount += 1
-                        attacker.pointOfInterception = copy.deepcopy(intercept_point)
-                        defender_with_min_time.target = attacker
-                        defender_with_min_time.pointOfInterception = copy.deepcopy(intercept_point)
-                        defender_with_min_time.busy = True
-                        defender_with_min_time.strategy = Strategies.StrategySequence(defender_with_min_time, [
-                            (Strategies.PointAtLocation, (defender_with_min_time, defender_with_min_time.pointOfInterception)),
-                            (Strategies.DestinationOnly, (defender_with_min_time, defender_with_min_time.pointOfInterception, 1.0, True)),
-                            (Strategies.PointAtBoat, (defender_with_min_time, attacker)),
-                            (Strategies.MoveTowardBoat, (defender_with_min_time, attacker))
-                        ])
-                        defender_with_min_time.numberOfInterceptionAttempts += 1
-                        #print "Defender {} should be intercepting".format(defender_with_max_distance.uniqueID)
-                        #print "Defender {} has attempted {} interceptions".format(defender_with_max_distance.uniqueID, defender_with_max_distance.numberOfInterceptionAttempts)
+                            attacker.hasBeenTargeted = True
+                            attacker.targetedBy = defender_with_min_time
+                            attacker.targetedByCount += 1
+                            attacker.pointOfInterception = copy.deepcopy(intercept_point)
+                            defender_with_min_time.target = attacker
+                            defender_with_min_time.pointOfInterception = copy.deepcopy(intercept_point)
+                            defender_with_min_time.busy = True
+                            defender_with_min_time.strategy = Strategies.StrategySequence(defender_with_min_time, [
+                                (Strategies.PointAtLocation, (defender_with_min_time, defender_with_min_time.pointOfInterception)),
+                                (Strategies.DestinationOnly, (defender_with_min_time, defender_with_min_time.pointOfInterception, 1.0, True)),
+                                (Strategies.PointAtBoat, (defender_with_min_time, attacker)),
+                                (Strategies.MoveTowardBoat, (defender_with_min_time, attacker))
+                            ])
+                            defender_with_min_time.numberOfInterceptionAttempts += 1
+                            #print "Defender {} should be intercepting".format(defender_with_max_distance.uniqueID)
+                            #print "Defender {} has attempted {} interceptions".format(defender_with_max_distance.uniqueID, defender_with_max_distance.numberOfInterceptionAttempts)
                     else:
                         #print "NO ONE CAN INTERCEPT! OH NOES!"
                         None

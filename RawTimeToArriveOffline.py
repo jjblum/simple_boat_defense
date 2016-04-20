@@ -3,6 +3,7 @@ import numpy as np
 import scipy.integrate as spi
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.colors import LightSource, Normalize
 import os.path
 import pylab
 import Boat
@@ -114,14 +115,26 @@ def main():
 
         #if np.min(r) == 0.0:
         #    T_th_r_u0[:, 0, 0] = 0  # zero radius, u0 = 0 should be zero seconds (have to do this one manually)
-        fig = plt.figure()
-        ax = fig.gca(projection='3d')
+        #fig = plt.figure()
+        #ax = fig.gca(projection='3d')
         R, TH = np.meshgrid(r, th)  # three dimensional meshgrid
-        #ax.plot_surface(R, TH, T_th_r_u0[:, :, 0], color='r')
-        #ax.plot_surface(R, TH, T_th_r_u0[:, :, -1], color='g')
-        #ax.plot_surface(R, TH, estimate, color='b')
+        #ax.plot_surface(R, np.rad2deg(TH), T_th_r_u0[:, :, 0], color='r', alpha=0.5)
+        #ax.plot_surface(R, np.rad2deg(TH), T_th_r_u0[:, :, -1], color='g', alpha=0.5)
+        #ax.plot_surface(R, np.rad2deg(TH), coeffs[0]*TH + coeffs[1]*R + coeffs[2]*2.5, color='b', alpha=0.5)
         #ax.plot_surface(R, TH, coeffs[0]*TH + coeffs[1]*R - T_th_r_u0[:, :, 0], color='r')
-        ax.plot_wireframe(R, TH, coeffs[0]*TH + coeffs[1]*R + coeffs[2]*2.5 - T_th_r_u0[:, :, -1], color='g')
+        #ax.scatter(R, np.rad2deg(TH), coeffs[0]*TH + coeffs[1]*R + coeffs[2]*2.5 - T_th_r_u0[:, :, -1], color='r', alpha=0.5)
+
+        plt.rcParams.update({'font.size': 18})
+        error = coeffs[0]*TH + coeffs[1]*R + coeffs[2]*2.5 - T_th_r_u0[:, :, -1]
+        fig, ax = plt.subplots()
+        ax.imshow(error, extent=[0, 30, 0, 180],  aspect="auto")
+        # Use a proxy artist for the colorbar...
+        im = ax.imshow(error, extent=[0, 30, 0, 180],  aspect="auto")
+        im.remove()
+        fig.colorbar(im, label="(linear model - offline data) error (s)")
+        plt.xlabel("Distance relative to agent (m)")
+        plt.ylabel("Heading relative to agent (deg)")
+        #plt.title("Least-Squares Linear Model of Time-To-Arrive")
         plt.show()
 
         # notice how the results are almost planar for both u0 = 0 and u0 = max EXCEPT below 3 m radius
