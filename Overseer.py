@@ -18,7 +18,6 @@ def absoluteAngleDifference(angle1, angle2):
     return np.abs(angle1 - angle2)
 
 
-
 class Team(object):
     """
         Class that allows the broadcast of strategies to several cooperative boats
@@ -49,12 +48,15 @@ class Overseer(object):
         self._atk_vs_asset_pairwise_distances = None
         self._def_vs_atk_pairwise_distances = None
         self._defenseMetric = None
-        self._thCoeff = 2.54832785865
-        self._rCoeff = 0.401354269952
-        self._u0Coeff = 0.0914788305811
         self._max_allowable_intercept_distace = 20.
         self._atk_type = random_or_TTA_attackers
         self._def_type = static_or_dynamic_defense
+        self._defender_thCoeff = defenders[0].design.thCoeff
+        self._defender_rCoeff = defenders[0].design.rCoeff
+        self._defender_u0Coeff = defenders[0].design.u0Coeff
+        self._attacker_thCoeff = attackers[0].design.thCoeff
+        self._attacker_rCoeff = attackers[0].design.rCoeff
+        self._attacker_u0Coeff = attackers[0].design.u0Coeff
 
     @property
     def defenseMetric(self):
@@ -152,7 +154,7 @@ class Overseer(object):
                     # TODO - check if time to arrive at asset is less than defender time to arrive, and if it is, attack immediately
                     localAngleToAsset = np.abs(wrapToPi(attacker.localAngleToBoat(asset)))
                     u = attacker.state[2]
-                    TTA = self._thCoeff*localAngleToAsset + self._rCoeff*distanceToAsset + self._u0Coeff*u
+                    TTA = self._attacker_thCoeff*localAngleToAsset + self._attacker_rCoeff*distanceToAsset + self._attacker_u0Coeff*u
                     if TTA < defenderTTA_dict[radii[1]][np.floor(np.rad2deg(globalAngle))]:
                         attacker.strategy = Strategies.MoveTowardAsset(attacker)
                         self.defenseMetric.attackHistory.append((attacker.time, globalAngle))
@@ -284,7 +286,7 @@ class Overseer(object):
                     defenders_th[defenders_th < 0.] += 2*np.pi
                     local_angle = global_angle - np.repeat(defenders_th, NG, axis=0)  # the TTA model only uses positive theta!
                     local_angle = np.abs(wrapToPi(local_angle))  # must be on the [0, pi] interval
-                    TTA = self._thCoeff*local_angle + self._rCoeff*R + self._u0Coeff*np.repeat(defender_u, NG, axis=0)
+                    TTA = self._defender_thCoeff*local_angle + self._defender_rCoeff*R + self._defender_u0Coeff*np.repeat(defender_u, NG, axis=0)
                     # remember, each NG rows are for a single defender -- TTA shape is (ND*NG,)
                     TTA_by_defender = np.reshape(TTA, (ND, NG))
                     able_to_intercept = np.logical_and(

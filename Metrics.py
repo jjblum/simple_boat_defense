@@ -22,9 +22,9 @@ class DefenseMetric(object):
         self._value = None  # the metric itself
         self._polarPlotData = None
         self._T = 0.0  # time threshold
-        self._thCoeff = 2.54832785865
-        self._rCoeff = 0.401354269952
-        self._u0Coeff = 0.0914788305811
+        self._defender_thCoeff = defenders[0].design.thCoeff
+        self._defender_rCoeff = defenders[0].design.rCoeff
+        self._defender_u0Coeff = defenders[0].design.u0Coeff
         self._ths = None
 
     @property
@@ -94,7 +94,7 @@ class DefenderFrameTimeToArrive(DefenseMetric):
             transform = np.array([[np.cos(heading), -np.sin(heading), x], [np.sin(heading), np.cos(heading), y], [0., 0., 1.]])
             for T in self._T:
 
-                R[i, :] = 1./self._rCoeff*(T - self._thCoeff*th - self._u0Coeff*u0)
+                R[i, :] = 1./self._defender_rCoeff*(T - self._defender_thCoeff*th - self._defender_u0Coeff*u0)
                 R[R < 0.] = 0.
                 bodyFrameData = np.row_stack((R[i, :]*np.cos(th), R[i, :]*np.sin(th), np.ones((1, NTH))))
                 # mirror image the other side and invert y
@@ -217,7 +217,7 @@ class MinimumTTARings(DefenseMetric):
         defenders_th[defenders_th < 0.] += 2*np.pi
         local_angle = global_angle - np.repeat(defenders_th, NG, axis=0)  # the TTA model only uses positive theta!
         local_angle = np.abs(wrapToPi(local_angle))
-        TTA = self._thCoeff*local_angle + self._rCoeff*R + self._u0Coeff*np.repeat(defender_u, NG, axis=0)
+        TTA = self._defender_thCoeff*local_angle + self._defender_rCoeff*R + self._defender_u0Coeff*np.repeat(defender_u, NG, axis=0)
         # remember, each NG rows are for a single defender -- TTA shape is (ND*NG,) = (ND*NTH*NR,)
         # reshape and find minimum over the defenders for each grid point
         TTA_by_defender = np.reshape(TTA, (ND, NR, NTH))

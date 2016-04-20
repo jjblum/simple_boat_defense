@@ -9,6 +9,8 @@ import cPickle as cp
 client = pymongo.MongoClient('localhost', 27017)
 db = client.TTA
 results = db.results
+plt.rcParams.update({'font.size': 20})
+
 
 def chi2_distance(histA, histB, eps = 1e-10):
     # compute the chi-squared distance
@@ -26,9 +28,10 @@ def minTTA_smoothness(db_results):
     for result in db_results:
         final_time = result["final_time"]
         minTTA = cp.loads(result["minTTA"])
+        T = minTTA.shape[0]
         meanOverTime_minTTA = np.mean(minTTA, axis=0)
         meanOverAngle_minTTA = np.mean(minTTA, axis=2)
-        volatility.append(np.sum(np.abs(np.diff(meanOverAngle_minTTA, axis=0)))/final_time)  # the change per second through time - like a measure of volatility
+        volatility.append(np.sum(np.abs(np.diff(meanOverAngle_minTTA, axis=0)))/T)  # the change per step through time - like a measure of volatility
         circularity.append(np.sum(np.abs(np.diff(meanOverTime_minTTA, axis=1)))/360.)  # the change per angle - like a measure of circularity (how circular it is)
         finalIndex = minTTA.shape[0]
         metric_Hz = finalIndex/final_time
@@ -43,11 +46,31 @@ def minTTA_smoothness(db_results):
 
 
 def gather_results(dictionary, collection=results, smoothness=False):
-    winning_dict = copy.deepcopy(dictionary)
-    winning_dict.update({"defenders_win": True})
-    losing_dict = copy.deepcopy(dictionary)
-    losing_dict.update({"defenders_win": False})
-    general_results = collection.find(dictionary)
+    if type(dictionary) is tuple:
+        winning_dict_list = list()
+        losing_dict_list = list()
+        general_dict_list = list()
+        for dict in dictionary:
+            winning_temp = copy.deepcopy(dict)
+            losing_temp = copy.deepcopy(dict)
+            general_temp = copy.deepcopy(dict)
+            winning_temp.update({"defenders_win": True})
+            losing_temp.update({"defenders_win": False})
+            winning_dict_list.append(winning_temp)
+            losing_dict_list.append(losing_temp)
+            general_dict_list.append(general_temp)
+        winning_dict = {"$or": winning_dict_list}
+        losing_dict = {"$or": losing_dict_list}
+        general_dict = {"$or": general_dict_list}
+    else:
+        winning_dict = copy.deepcopy(dictionary)
+        losing_dict = copy.deepcopy(dictionary)
+        winning_dict.update({"defenders_win": True})
+        losing_dict.update({"defenders_win": False})
+        winning_dict.update({"def_mass": "high"})
+        losing_dict.update({"def_mass": "high"})
+        general_dict = copy.deepcopy(dictionary)
+    general_results = collection.find(general_dict)
     winning_results = collection.find(winning_dict)
     losing_results = collection.find(losing_dict)
     rounds = float(general_results.count())
@@ -69,17 +92,17 @@ def winner_loser_histogram_plot(winners, losers, title_string, plot_type="final_
         ylim = 30.
     elif plot_type == "circularity":
         bins = np.linspace(0., 0.25, 50)
-        plt.ylim(0., 35.)
+        ylim = 35.
     elif plot_type == "volatility":
-        bins = np.linspace(0., 1.5, 50)
-        plt.ylim(0., 4.5)
+        bins = np.linspace(0., 0.3, 50)
+        ylim = 4.5
     n_win, bins, patches = plt.hist(winners, bins=bins, normed=True, facecolor='green', alpha=0.5)
     n_lose, bins, patches = plt.hist(losers, bins=bins, normed=True, facecolor='red', alpha=0.5)
     plt.ylim(0., ylim)
     plt.title(title_string)
     return chi2_distance(n_win, n_lose)
 
-"""
+
 print "\nAll RUNS:"
 winning_results = results.find({"defenders_win": True})
 rounds = float(results.count())
@@ -101,7 +124,7 @@ static_results = gather_results({"def_type": "static"}, smoothness=True)
 print "Any static defense had a {:.1f}% winning percentage".format(static_results[0])
 dynamic_results = gather_results({"def_type": "dynamic"}, smoothness=True)
 print "Any dynamic defense had a {:.1f}% winning percentage".format(dynamic_results[0])
-plt.rcParams.update({'font.size': 22})
+
 plt.subplot(121)
 winner_loser_histogram_plot(static_results[3][0], static_results[3][1], "static final attack circularity", "final_atk")
 plt.subplot(122)
@@ -140,21 +163,31 @@ print "random attack, dynamic defense had a {:.1f}% winning percentage".format(r
 
 print "\n***** Notice how dynamic defense mitigates the advantage that TTA knowledge provides the attackers *****"
 
-
+"""
 print "\n0 EXTRA DEFENDERS VS. 1 EXTRA DEFENDER VS. 2 EXTRA DEFENDERS:"
 zero_defender_results = gather_results({"num_attackers": 4, "num_defenders": 4}, smoothness=True)
 print "0 extra defenders had a {:.1f}% winning percentage".format(zero_defender_results[0])
-"""
-one_defender_results = gather_results({"num_attackers": 4, "num_defenders": 5}, {"num_attackers": 3, "num_defenders": 4}, smoothness=True)
-print "1 extra defender had a {:.1f}% winning percentage".format(one_defender_results)
-two_defender_results = gather_results({"num_attackers": 3, "num_defenders": 5})
-print "2 extra defenders had a {:.1f}% winning percentage".format(two_defender_results)
-
+one_defender_results = gather_results(({"num_attackers": 4, "num_defenders": 5}, {"num_attackers": 3, "num_defenders": 4}), smoothness=True)
+print "1 extra defender had a {:.1f}% winning percentage".format(one_defender_results[0])
+two_defender_results = gather_results({"num_attackers": 3, "num_defenders": 5}, smoothness=True)
+print "2 extra defenders had a {:.1f}% winning percentage".format(two_defender_results[0])
+plt.subplot(231)
+zero_defender_circularity_histogram_distance = winner_loser_histogram_plot(zero_defender_results[1][0], zero_defender_results[1][1], "0-extra defenders circularity", "circularity")
+plt.subplot(232)
+one_defender_circularity_histogram_distance = winner_loser_histogram_plot(one_defender_results[1][0], one_defender_results[1][1], "1-extra defender circularity", "circularity")
+plt.subplot(233)
+two_defender_circularity_histogram_distance = winner_loser_histogram_plot(two_defender_results[1][0], two_defender_results[1][1], "2-extra defenders", "circularity")
+plt.subplot(234)
+zero_defender_volatility_histogram_distance = winner_loser_histogram_plot(zero_defender_results[2][0], zero_defender_results[2][1], "0-extra defenders volatility", "volatility")
+plt.subplot(235)
+one_defender_volatility_histogram_distance = winner_loser_histogram_plot(one_defender_results[2][0], one_defender_results[2][1], "1-extra defender volatility", "volatility")
+plt.subplot(236)
+two_defender_volatility_histogram_distance = winner_loser_histogram_plot(two_defender_results[2][0], two_defender_results[2][1], "2-extra defenders volatility", "volatility")
+plt.show()
 
 print "\n30 VS. 40 MAX INTERCEPT DISTANCE:"
 thirty_max_intercept_distance_results = gather_results({"max_allowable_intercept_distance": 30.})
 print "Max intercept distance = 30 had a {:.1f}% winning percentage".format(thirty_max_intercept_distance_results)
 forty_max_intercept_distance_results = gather_results({"max_allowable_intercept_distance": 40.})
 print "Max intercept distance = 40 had a {:.1f}% winning percentage".format(forty_max_intercept_distance_results)
-
-results.close()
+"""

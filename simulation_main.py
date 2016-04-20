@@ -12,6 +12,7 @@ import Boat
 import Strategies
 import Overseer
 import Metrics
+import Designs
 
 import pymongo
 from bson.binary import Binary
@@ -22,13 +23,13 @@ results = db.results
 result = dict()
 
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
-WITH_PLOTTING = True
+WITH_PLOTTING = False
 PLOT_MAIN = True
 PLOT_METRIC = True
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
-DEFENDER_COUNT = 3
-ATTACKER_COUNT = 4
+DEFENDER_COUNT = 4
+ATTACKER_COUNT = 3
 BOAT_COUNT = DEFENDER_COUNT + ATTACKER_COUNT + 1  # one asset
 #print "{} ATTACKERS, {} DEFENDERS".format(ATTACKER_COUNT, BOAT_COUNT - 1 - ATTACKER_COUNT)
 MAX_DEFENDERS_PER_RING = np.arange(10.0, 100.0, 2.0)
@@ -282,7 +283,6 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_
     if type == "static_ring":
         for b in assets:
             None # asset does nothing
-            # TODO - turning ccw turns FASTER than turning cw???? Figure out why. Surge velocity doesn't show this.
         for b in defenders:
             None
             if static_or_dynamic_defense == "dynamic":
@@ -291,6 +291,7 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_
                 b.strategy = Strategies.DoNothing(b)
 
         for b in attackers:
+            None
             """
             if np.random.uniform(0., 1.) < 0.2:
                 b.strategy = Strategies.FeintTowardAsset(b, distanceToInitiateRetreat=40.0)
@@ -342,7 +343,8 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_
             # b.strategy = Strategies.MoveTowardAsset(b, 1.0)
 
 
-def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=40., random_or_TTA_attackers="TTA", static_or_dynamic_defense="static", filename="junk_results"):
+def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=40.,
+         random_or_TTA_attackers="TTA", static_or_dynamic_defense="static", filename="junk_results", high_or_low_mass_defenders="high"):
     # spawn boats objects
     boat_list = [Boat.Boat() for i in range(numDefenders + numAttackers + 1)]
 
@@ -351,10 +353,17 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
     for b in boat_list[-1 - numAttackers:-1]:
         b.type = "attacker"
 
-    print "{} DEFENDERS, {} ATTACKERS, MAX_INTERCEPT_DIST = {:.0f}, ATTACK TYPE = {}, DEF TYPE = {}".format(numDefenders, numAttackers, max_allowable_intercept_distance, random_or_TTA_attackers, static_or_dynamic_defense)
+    print "{} DEFENDERS, {} ATTACKERS, MAX_INTERCEPT_DIST = {:.0f}, ATTACK TYPE = {}, DEF TYPE = {}, DEF MASS = {}".format(
+        numDefenders, numAttackers, max_allowable_intercept_distance, random_or_TTA_attackers, static_or_dynamic_defense, high_or_low_mass_defenders)
 
     attackers = [b for b in boat_list if b.type == "attacker"]
     defenders = [b for b in boat_list if b.type == "defender"]
+
+    # use high mass defenders if desired
+    if high_or_low_mass_defenders == "high":
+        for b in defenders:
+            b.design = Designs.HighMassTankDriveDesign()
+
     assets = [b for b in boat_list if b.type == "asset"]
     overseer = Overseer.Overseer(assets, defenders, attackers, random_or_TTA_attackers, static_or_dynamic_defense)
     overseer.attackers = attackers
@@ -470,6 +479,7 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
     result["max_allowable_intercept_distance"] = max_allowable_intercept_distance
     result["atk_type"] = random_or_TTA_attackers
     result["def_type"] = static_or_dynamic_defense
+    result["def_mass"] = high_or_low_mass_defenders
     result["defenders_win"] = defenders_win
     result["final_time"] = final_time
     result["attackHistory"] = Binary(cp.dumps(plottingMetric.attackHistory, protocol=2))
@@ -478,7 +488,7 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
 
 if __name__ == '__main__':
     args = sys.argv
-    # number of defenders, number of attackers, max_allowable_intercept_distance, random_or_TTA_attackers, static_or_dynamic_defense
+    # number of defenders, number of attackers, max_allowable_intercept_distance, random_or_TTA_attackers, static_or_dynamic_defense, high_or_low_mass_defenders
     args = args[1:]
     if len(args) > 0:
         numDefenders = int(args[0])
@@ -486,7 +496,8 @@ if __name__ == '__main__':
         max_allowable_intercept_distance = float(args[2])
         random_or_TTA_attackers = args[3]
         static_or_dynamic_defense = args[4]
-        filename = args[5]
-        main(numDefenders, numAttackers, max_allowable_intercept_distance, random_or_TTA_attackers, static_or_dynamic_defense, filename)
+        high_or_low_mass_defenders = args[5]
+        filename = args[6]
+        main(numDefenders, numAttackers, max_allowable_intercept_distance, random_or_TTA_attackers, static_or_dynamic_defense, filename, high_or_low_mass_defenders)
     else:
         main()

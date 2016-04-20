@@ -2,10 +2,6 @@ import numpy as np
 import math
 import abc
 
-# TODO - figure out why linear drag is completely dominating the drag down times!
-#        This seems super unrealistic. Nonlinear drag is getting it into the linear regime quickly,
-#        and then linear drag dominates in a ridiculous way. Fix it.
-
 
 class Design(object):
     # abstract class, a design dictates how actuation fractions are translated into actual thrust and moment
@@ -97,6 +93,65 @@ class Lutra(Design):
         return time, distance
 
 
+class HighMassTankDriveDesign(Lutra):
+    def __init__(self):
+        super(HighMassTankDriveDesign, self).__init__()
+        self._mass = 5.7833*1.5
+        self._momentOfInertia = 0.6*1.5  # [kg/m^2]
+        self._maxSpeed = 2.5  # [m/s]
+        self._maxThrustPerMotor = 25.0  # [N]
+        # self._minThrustPerMotor = 0.0  # assume no drop in thrust for backdriving
+        self._momentArm = 0.3556  # distance between the motors [m]
+        self._maxForwardThrust = 2.*self._maxThrustPerMotor
+        """
+        self._speedVsMinRadius = np.array([
+            [0.84, 2.0],
+            [1.18, 3.0],
+            [1.37, 3.75],
+            [1.57, 4.5],
+            [1.84, 6.0],
+            [2.12, 9.0],
+            [2.18, 10.0],
+            [2.31, 20.0],
+            [2.39, 30.0]
+        ])
+        """
+        self._dragDownCurve = np.zeros((7, 3))  # u0, time to u = 0.01, d to u = 0.01
+        self._dragDownCurve[0, :] = np.array([0.1, 4.05, 0.15])
+        self._dragDownCurve[1, :] = np.array([0.2, 5.05, 0.29])
+        self._dragDownCurve[2, :] = np.array([0.5, 7.45, 1.09])
+        self._dragDownCurve[3, :] = np.array([1.0, 8.55, 1.83])
+        self._dragDownCurve[4, :] = np.array([1.5, 8.9, 2.26])
+        self._dragDownCurve[5, :] = np.array([2.0, 9.05, 2.57])
+        self._dragDownCurve[6, :] = np.array([2.5, 9.15, 2.81])
+        # below 1 m/s, you should probably just turn in place!
+        self._maxHeadingRate = 0.403  # [rad/s]
+        self._thCoeff = 2.58862349223
+        self._rCoeff = 0.39429396374
+        self._u0Coeff = 0.0698199590918
+
+    @property
+    def thCoeff(self):
+        return self._thCoeff
+    @property
+    def rCoeff(self):
+        return self._rCoeff
+    @property
+    def u0Coeff(self):
+        return self._u0Coeff
+
+    def thrustAndMomentFromFractions(self, thrustFraction, momentFraction):
+        thrustSway = 0.0
+
+        m0 = np.clip(thrustFraction + momentFraction, -1.0, 1.0)
+        m1 = np.clip(thrustFraction - momentFraction, -1.0, 1.0)
+
+        thrustSurge = self._maxThrustPerMotor*(m0 + m1)
+        moment = self._maxThrustPerMotor*(m1 - m0)/2.0*self._momentArm
+
+        return thrustSurge, thrustSway, moment
+
+
 class TankDriveDesign(Lutra):
     def __init__(self):
         super(TankDriveDesign, self).__init__()
@@ -117,6 +172,20 @@ class TankDriveDesign(Lutra):
         ])
         # below 1 m/s, you should probably just turn in place!
         self._maxHeadingRate = 0.403  # [rad/s]
+        # TODO - turning ccw turns FASTER than turning cw???? Figure out why. Surge velocity doesn't show this.
+        self._thCoeff = 2.54832785865
+        self._rCoeff = 0.401354269952
+        self._u0Coeff = 0.0914788305811
+
+    @property
+    def thCoeff(self):
+        return self._thCoeff
+    @property
+    def rCoeff(self):
+        return self._rCoeff
+    @property
+    def u0Coeff(self):
+        return self._u0Coeff
 
     def thrustAndMomentFromFractions(self, thrustFraction, momentFraction):
         thrustSway = 0.0

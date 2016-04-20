@@ -147,6 +147,7 @@ def main():
 
     else:
         boat = Boat.Boat()
+        boat.design = Designs.HighMassTankDriveDesign()
         # u0 = np.arange(0.0, boat.design.maxSpeed+0.001, U0_RESOLUTION)
         # u0 = np.linspace(0.001, boat.design.maxSpeed, 2.)
         u0 = np.linspace(0.0, 2.5, 6)
