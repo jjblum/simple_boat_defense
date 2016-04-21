@@ -23,13 +23,13 @@ results = db.results
 result = dict()
 
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
-WITH_PLOTTING = False
+WITH_PLOTTING = True
 PLOT_MAIN = True
 PLOT_METRIC = True
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
 DEFENDER_COUNT = 4
-ATTACKER_COUNT = 3
+ATTACKER_COUNT = 2
 BOAT_COUNT = DEFENDER_COUNT + ATTACKER_COUNT + 1  # one asset
 #print "{} ATTACKERS, {} DEFENDERS".format(ATTACKER_COUNT, BOAT_COUNT - 1 - ATTACKER_COUNT)
 MAX_DEFENDERS_PER_RING = np.arange(10.0, 100.0, 2.0)
@@ -263,11 +263,17 @@ def initialPositions(assets, defenders, attackers, type="static_ring", static_or
             for b in defenders:
                 b.state[2] = b.design.maxSpeed
                 b.state[4] = assets[0].globalAngleToBoat(b) + np.pi/2.
+        elif static_or_dynamic_defense == "turned":
+            for b in defenders:
+                b.state[4] = assets[0].globalAngleToBoat(b) + np.pi/2.
+                b.originalState[4] = assets[0].globalAngleToBoat(b) + np.pi/2.
         randomAttackers(attackers)
         #groupedAttackers(attackers)
+        #assets[0].design = Designs.LowThrustTankDriveDesign()
+        #assets[0].state[2] = 1.0
         #defenders[0].state[0] = 10.
         #defenders[0].state[1] = 0.
-        #ttackers[0].state[0] = 30.
+        #attackers[0].state[0] = 30.
         #attackers[0].state[1] = -30.
         #attackers[0].state[4] = np.pi
         #attackers[0].state[2] = attackers[0].design.maxSpeed
@@ -283,12 +289,16 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_
     if type == "static_ring":
         for b in assets:
             None # asset does nothing
+            #b.strategy = Strategies.HoldHeading(b, surgeVelocity=2.5)
+            #b.strategy = Strategies.SpinInPlace(b, direction="ccw")
         for b in defenders:
             None
+
             if static_or_dynamic_defense == "dynamic":
                 b.strategy = Strategies.Circle_LOS(b, [0., 0.], 10.0, surgeVelocity=2.5, direction="ccw")
             elif static_or_dynamic_defense == "static":
                 b.strategy = Strategies.DoNothing(b)
+
 
         for b in attackers:
             None
@@ -302,6 +312,7 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_
                     direction = "cw"
                 b.strategy = Strategies.Circle_LOS(b, [0., 0.], 50., direction, surgeVelocity=b.design.maxSpeed)
             """
+
             if random_or_TTA_attackers == "TTA":
                 if b is attackers[0]:
                     #b.strategy = Strategies.TimedStrategySequence(b, [
@@ -344,7 +355,7 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_
 
 
 def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=40.,
-         random_or_TTA_attackers="TTA", static_or_dynamic_defense="static", filename="junk_results", high_or_low_mass_defenders="high"):
+         random_or_TTA_attackers="TTA", static_or_dynamic_defense="static", filename="junk_results", high_or_low_speed_defenders="high"):
     # spawn boats objects
     boat_list = [Boat.Boat() for i in range(numDefenders + numAttackers + 1)]
 
@@ -353,16 +364,16 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
     for b in boat_list[-1 - numAttackers:-1]:
         b.type = "attacker"
 
-    print "{} DEFENDERS, {} ATTACKERS, MAX_INTERCEPT_DIST = {:.0f}, ATTACK TYPE = {}, DEF TYPE = {}, DEF MASS = {}".format(
-        numDefenders, numAttackers, max_allowable_intercept_distance, random_or_TTA_attackers, static_or_dynamic_defense, high_or_low_mass_defenders)
+    print "{} DEFENDERS, {} ATTACKERS, MAX_INTERCEPT_DIST = {:.0f}, ATTACK TYPE = {}, DEF TYPE = {}, DEF SPEED = {}".format(
+        numDefenders, numAttackers, max_allowable_intercept_distance, random_or_TTA_attackers, static_or_dynamic_defense, high_or_low_speed_defenders)
 
     attackers = [b for b in boat_list if b.type == "attacker"]
     defenders = [b for b in boat_list if b.type == "defender"]
 
     # use high mass defenders if desired
-    if high_or_low_mass_defenders == "high":
+    if high_or_low_speed_defenders == "low":
         for b in defenders:
-            b.design = Designs.HighMassTankDriveDesign()
+            b.design = Designs.LowThrustTankDriveDesign()
 
     assets = [b for b in boat_list if b.type == "asset"]
     overseer = Overseer.Overseer(assets, defenders, attackers, random_or_TTA_attackers, static_or_dynamic_defense)
@@ -408,12 +419,16 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
         t += dt
         step += 1
 
+        #if assets[0].state[2] < 0.01:
+        #print t, assets[0].state[0]
+        #print t, assets[0].state[5]
+
         # update metrics at some Hz
         Hz = 5.0
         if np.abs(np.round(Hz*t, 0) - Hz*t) < 10e-3:
             for m in metrics:
                 m.measureCurrentState()
-
+        Hz = 5.0
         # update any overseers at some Hz
         if np.abs(np.round(Hz*t, 0) - Hz*t) < 10e-3:
             overseer.update()
@@ -479,7 +494,7 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
     result["max_allowable_intercept_distance"] = max_allowable_intercept_distance
     result["atk_type"] = random_or_TTA_attackers
     result["def_type"] = static_or_dynamic_defense
-    result["def_mass"] = high_or_low_mass_defenders
+    result["def_speed"] = high_or_low_speed_defenders
     result["defenders_win"] = defenders_win
     result["final_time"] = final_time
     result["attackHistory"] = Binary(cp.dumps(plottingMetric.attackHistory, protocol=2))
@@ -488,7 +503,7 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
 
 if __name__ == '__main__':
     args = sys.argv
-    # number of defenders, number of attackers, max_allowable_intercept_distance, random_or_TTA_attackers, static_or_dynamic_defense, high_or_low_mass_defenders
+    # number of defenders, number of attackers, max_allowable_intercept_distance, random_or_TTA_attackers, static_or_dynamic_defense, high_or_low_speed_defenders
     args = args[1:]
     if len(args) > 0:
         numDefenders = int(args[0])
@@ -496,8 +511,8 @@ if __name__ == '__main__':
         max_allowable_intercept_distance = float(args[2])
         random_or_TTA_attackers = args[3]
         static_or_dynamic_defense = args[4]
-        high_or_low_mass_defenders = args[5]
+        high_or_low_speed_defenders = args[5]
         filename = args[6]
-        main(numDefenders, numAttackers, max_allowable_intercept_distance, random_or_TTA_attackers, static_or_dynamic_defense, filename, high_or_low_mass_defenders)
+        main(numDefenders, numAttackers, max_allowable_intercept_distance, random_or_TTA_attackers, static_or_dynamic_defense, filename, high_or_low_speed_defenders)
     else:
         main()

@@ -177,7 +177,7 @@ class Overseer(object):
                     defender.pointOfInterception = None
                     if self._def_type == "dynamic":
                         defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 10.0, surgeVelocity=2.5, direction="ccw")
-                    elif self._def_type == "static":
+                    elif self._def_type == "static" or self._def_type == "turned":
                         defender.strategy = Strategies.StrategySequence(defender, [
                             (Strategies.PointAtLocation, (defender, [defender.originalState[0], defender.originalState[1]])),
                             (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),
@@ -195,7 +195,7 @@ class Overseer(object):
                         defender.pointOfInterception = None
                         if self._def_type == "dynamic":
                             defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 10.0, surgeVelocity=2.5, direction="ccw")
-                        elif self._def_type == "static":
+                        elif self._def_type == "static" or self._def_type == "turned":
                             defender.strategy = Strategies.StrategySequence(defender, [
                                 (Strategies.PointAtLocation, (defender, [defender.originalState[0], defender.originalState[1]])),
                                 (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),
@@ -211,7 +211,7 @@ class Overseer(object):
                         defender.pointOfInterception = None
                         if self._def_type == "dynamic":
                             defender.strategy = Strategies.Circle_LOS(defender, [0., 0.], 10.0, surgeVelocity=2.5, direction="ccw")
-                        elif self._def_type == "static":
+                        elif self._def_type == "static" or self._def_type == "turned":
                             defender.strategy = Strategies.StrategySequence(defender, [
                                 (Strategies.PointAtLocation, (defender, [defender.originalState[0], defender.originalState[1]])),
                                 (Strategies.DestinationOnly, (defender, [defender.originalState[0], defender.originalState[1]])),

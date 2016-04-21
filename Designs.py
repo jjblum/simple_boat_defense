@@ -93,17 +93,16 @@ class Lutra(Design):
         return time, distance
 
 
-class HighMassTankDriveDesign(Lutra):
+class LowThrustTankDriveDesign(Lutra):
     def __init__(self):
-        super(HighMassTankDriveDesign, self).__init__()
-        self._mass = 5.7833*1.5
-        self._momentOfInertia = 0.6*1.5  # [kg/m^2]
-        self._maxSpeed = 2.5  # [m/s]
-        self._maxThrustPerMotor = 25.0  # [N]
+        super(LowThrustTankDriveDesign, self).__init__()
+        self._mass = 5.7833
+        self._momentOfInertia = 0.6  # [kg/m^2]
+        self._maxSpeed = 1.75  # [m/s]
+        self._maxThrustPerMotor = 25.0/2.  # [N]
         # self._minThrustPerMotor = 0.0  # assume no drop in thrust for backdriving
         self._momentArm = 0.3556  # distance between the motors [m]
         self._maxForwardThrust = 2.*self._maxThrustPerMotor
-        """
         self._speedVsMinRadius = np.array([
             [0.84, 2.0],
             [1.18, 3.0],
@@ -115,20 +114,12 @@ class HighMassTankDriveDesign(Lutra):
             [2.31, 20.0],
             [2.39, 30.0]
         ])
-        """
-        self._dragDownCurve = np.zeros((7, 3))  # u0, time to u = 0.01, d to u = 0.01
-        self._dragDownCurve[0, :] = np.array([0.1, 4.05, 0.15])
-        self._dragDownCurve[1, :] = np.array([0.2, 5.05, 0.29])
-        self._dragDownCurve[2, :] = np.array([0.5, 7.45, 1.09])
-        self._dragDownCurve[3, :] = np.array([1.0, 8.55, 1.83])
-        self._dragDownCurve[4, :] = np.array([1.5, 8.9, 2.26])
-        self._dragDownCurve[5, :] = np.array([2.0, 9.05, 2.57])
-        self._dragDownCurve[6, :] = np.array([2.5, 9.15, 2.81])
         # below 1 m/s, you should probably just turn in place!
-        self._maxHeadingRate = 0.403  # [rad/s]
-        self._thCoeff = 2.58862349223
-        self._rCoeff = 0.39429396374
-        self._u0Coeff = 0.0698199590918
+        self._maxHeadingRate = 0.3  # [rad/s]
+        self._thCoeff = 3.54371905431
+        self._rCoeff = 0.555092892684
+        self._u0Coeff = 0.0856672495924
+
 
     @property
     def thCoeff(self):
