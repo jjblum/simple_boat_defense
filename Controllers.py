@@ -47,8 +47,6 @@ class UniversalPID(object):
         self._name = name
 
     def signal(self, error, t):
-        #if self._boat.type == "asset":
-        #    print "{} PID new time = {},  current time = {},  dt = {}".format(self._name, t, self._t, t-self._t)
         dt = t - self._t
         self._t = t
         self._errorDerivative = 0.0

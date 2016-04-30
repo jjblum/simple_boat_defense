@@ -17,10 +17,11 @@ import Designs
 import pymongo
 from bson.binary import Binary
 import cPickle as cp
-client = pymongo.MongoClient('localhost', 27017)
-db = client.TTA
-results = db.results
-result = dict()
+
+#client = pymongo.MongoClient('localhost', 27017)
+#db = client.TTA
+#results = db.results
+#result = dict()
 
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
 WITH_PLOTTING = True
@@ -29,7 +30,7 @@ PLOT_METRIC = True
 GLOBAL_DT = 0.05  # [s]
 TOTAL_TIME = 120  # [s]
 DEFENDER_COUNT = 4
-ATTACKER_COUNT = 2
+ATTACKER_COUNT = 3
 BOAT_COUNT = DEFENDER_COUNT + ATTACKER_COUNT + 1  # one asset
 #print "{} ATTACKERS, {} DEFENDERS".format(ATTACKER_COUNT, BOAT_COUNT - 1 - ATTACKER_COUNT)
 MAX_DEFENDERS_PER_RING = np.arange(10.0, 100.0, 2.0)
@@ -325,7 +326,7 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_
                 else:
                     b.strategy = Strategies.TimedStrategySequence(b, [
                         (Strategies.DoNothing, (b,))
-                    ], [1.])
+                    ], [5.])
             elif random_or_TTA_attackers == "random":
                 if b is attackers[0]:
                     b.strategy = Strategies.TimedStrategySequence(b, [
@@ -488,18 +489,18 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
         result_string = "Simulation ran to max time without a result"
         defenders_win = False
     print result_string + "  finished {} simulated seconds in {} real-time seconds".format(t,  time.time() - real_time_zero)
-    #np.savez(filename + ".npz", minTTA=np.array(plottingMetric.minTTA()), finalTime=t, defenders_win=defenders_win, attackHistory=plottingMetric.attackHistory)
-    result["num_defenders"] = numDefenders
-    result["num_attackers"] = numAttackers
-    result["max_allowable_intercept_distance"] = max_allowable_intercept_distance
-    result["atk_type"] = random_or_TTA_attackers
-    result["def_type"] = static_or_dynamic_defense
-    result["def_speed"] = high_or_low_speed_defenders
-    result["defenders_win"] = defenders_win
-    result["final_time"] = final_time
-    result["attackHistory"] = Binary(cp.dumps(plottingMetric.attackHistory, protocol=2))
-    result["minTTA"] = Binary(cp.dumps(np.array(plottingMetric.minTTA()), protocol=2))
-    result_id = results.insert_one(result).inserted_id
+    ###np.savez(filename + ".npz", minTTA=np.array(plottingMetric.minTTA()), finalTime=t, defenders_win=defenders_win, attackHistory=plottingMetric.attackHistory)
+    #result["num_defenders"] = numDefenders
+    #result["num_attackers"] = numAttackers
+    #result["max_allowable_intercept_distance"] = max_allowable_intercept_distance
+    #result["atk_type"] = random_or_TTA_attackers
+    #result["def_type"] = static_or_dynamic_defense
+    #result["def_speed"] = high_or_low_speed_defenders
+    #result["defenders_win"] = defenders_win
+    #result["final_time"] = final_time
+    #result["attackHistory"] = Binary(cp.dumps(plottingMetric.attackHistory, protocol=2))
+    #result["minTTA"] = Binary(cp.dumps(np.array(plottingMetric.minTTA()), protocol=2))
+    #result_id = results.insert_one(result).inserted_id
 
 if __name__ == '__main__':
     args = sys.argv
