@@ -142,6 +142,8 @@ class Overseer(object):
                 #print "Attacker {}: {}, isFinished = {}".format(attacker.uniqueID, type(attacker.strategy), attacker.strategy.finished)
 
                 if attacker.strategy.finished and type(attacker.strategy) is Strategies.MoveToAngleAlongCircle:
+                    if self.assets[0].time < 6.0:
+                        return
                     attacker.strategy = Strategies.MoveTowardAsset(attacker)
                     self.defenseMetric.attackHistory.append((attacker.time, globalAngle))
 

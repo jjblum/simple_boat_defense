@@ -5,10 +5,10 @@ import subprocess
 NUMBER_OF_RUNS = 100
 NUMBER_PER_BATCH = 25
 
-NUMBER_OF_DEFENDERS = [4, 5]
-NUMBER_OF_ATTACKERS = [3, 4]
+NUMBER_OF_DEFENDERS = [4]
+NUMBER_OF_ATTACKERS = [3]
 ATTACK_TYPES = ["random", "TTA"]  # random or TTA
-DEFENSE_TYPE = ["turned"]  # static, dynamic, or turned (static but facing along the dynamic circle)
+DEFENSE_TYPE = ["dynamic"]  # static, dynamic, or turned (static but facing along the dynamic circle)
 MAX_INTERCEPT_DISTANCE = [40.] # 30. or 40.
 DEFENDER_SPEED = ["high"]  # low or high
 

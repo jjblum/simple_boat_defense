@@ -18,10 +18,10 @@ import pymongo
 from bson.binary import Binary
 import cPickle as cp
 
-#client = pymongo.MongoClient('localhost', 27017)
-#db = client.TTA
-#results = db.results
-#result = dict()
+client = pymongo.MongoClient('localhost', 27017)
+db = client.TTA
+results = db.results
+result = dict()
 
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
 WITH_PLOTTING = True
@@ -326,7 +326,7 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_
                 else:
                     b.strategy = Strategies.TimedStrategySequence(b, [
                         (Strategies.DoNothing, (b,))
-                    ], [5.])
+                    ], [0.1])
             elif random_or_TTA_attackers == "random":
                 if b is attackers[0]:
                     b.strategy = Strategies.TimedStrategySequence(b, [
@@ -356,7 +356,7 @@ def initialStrategy(assets, defenders, attackers, type="static_ring", random_or_
 
 
 def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable_intercept_distance=40.,
-         random_or_TTA_attackers="TTA", static_or_dynamic_defense="static", filename="junk_results", high_or_low_speed_defenders="high"):
+         random_or_TTA_attackers="TTA", static_or_dynamic_defense="turned", filename="junk_results", high_or_low_speed_defenders="high"):
     # spawn boats objects
     boat_list = [Boat.Boat() for i in range(numDefenders + numAttackers + 1)]
 
@@ -490,16 +490,17 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
         defenders_win = False
     print result_string + "  finished {} simulated seconds in {} real-time seconds".format(t,  time.time() - real_time_zero)
     ###np.savez(filename + ".npz", minTTA=np.array(plottingMetric.minTTA()), finalTime=t, defenders_win=defenders_win, attackHistory=plottingMetric.attackHistory)
-    #result["num_defenders"] = numDefenders
-    #result["num_attackers"] = numAttackers
-    #result["max_allowable_intercept_distance"] = max_allowable_intercept_distance
-    #result["atk_type"] = random_or_TTA_attackers
-    #result["def_type"] = static_or_dynamic_defense
-    #result["def_speed"] = high_or_low_speed_defenders
-    #result["defenders_win"] = defenders_win
-    #result["final_time"] = final_time
-    #result["attackHistory"] = Binary(cp.dumps(plottingMetric.attackHistory, protocol=2))
-    #result["minTTA"] = Binary(cp.dumps(np.array(plottingMetric.minTTA()), protocol=2))
+    result["num_defenders"] = numDefenders
+    result["num_attackers"] = numAttackers
+    result["max_allowable_intercept_distance"] = max_allowable_intercept_distance
+    result["atk_type"] = random_or_TTA_attackers
+    result["def_type"] = static_or_dynamic_defense
+    result["def_speed"] = high_or_low_speed_defenders
+    result["defenders_win"] = defenders_win
+    result["final_time"] = final_time
+    result["attackHistory"] = Binary(cp.dumps(plottingMetric.attackHistory, protocol=2))
+    result["minTTA"] = Binary(cp.dumps(np.array(plottingMetric.minTTA()), protocol=2))
+    result["new"] = True
     #result_id = results.insert_one(result).inserted_id
 
 if __name__ == '__main__':
