@@ -113,40 +113,47 @@ def gather_results(dictionary, collection=results, smoothness=False):
 def winner_loser_histogram_plot(winners, losers, title_string, plot_type="final_atk"):
 
     if plot_type == "final_atk":
-        bins = np.linspace(0., 0.4, 15)
-        axes = [0., 0.4, 0., 100.]
+        bins = np.linspace(0.15, 0.45, 15)
+        axes = [0.15, 0.45, -100., 100.]
     elif plot_type == "circularity":
-        bins = np.linspace(0.05, 0.3, 15)
-        axes = [0.05, 0.30, 0., 100.]
+        bins = np.linspace(0.0, 0.4, 15)
+        axes = [0.0, 0.4, -100., 100.]
     elif plot_type == "volatility":
-        bins = np.linspace(0., 0.3, 15)
-        axes = [0.05, 0.30, 0., 100.]
+        bins = np.linspace(0., 0.30, 15)
+        axes = [0.05, 0.25, -100., 100.]
     elif plot_type == "max_minTTA":
         bins = np.linspace(5., 20., 15)
-        axes = [5., 20., 0., 100.]
+        axes = [7., 20., -100., 100.]
 
     hist_win, _ = np.histogram(winners, bins=bins, normed=False)
     hist_lose, _ = np.histogram(losers, bins=bins, normed=False)
+    hist_win = hist_win.astype(float)
+    hist_lose = hist_lose.astype(float)
+    max_bin_value = np.max(np.concatenate((hist_win, hist_lose)))
+    hist_win_normalized = hist_win/max_bin_value*100.
+    hist_lose_normalized = hist_lose/max_bin_value*100.
     net_wins = (hist_win - hist_lose) #/(float(len(winners))+float(len(losers)))
-    win_over_losses = np.divide(hist_win.astype(float), hist_lose.astype(float))
-    winning_percentage = hist_win.astype(float)/(hist_win.astype(float) + hist_lose.astype(float))*100.
+    win_over_losses = np.divide(hist_win, hist_lose)
+    winning_percentage = hist_win/(hist_win + hist_lose)*100.
     #plt.bar(left=bins[1:], height=net_wins, width=bins[1]-bins[0], color='m')
 
-    plt.bar(left=bins[1:], height=hist_win, width=bins[1]-bins[0], color='g')
-    plt.bar(left=bins[1:], height=-hist_lose, width=bins[1]-bins[0], color='r')
+    bin_left_edges = bins[:-1]
+    bin_width = bins[1] - bins[0]
+    bin_centers = bin_left_edges+bin_width/2.
+    winner_count = len(winners)
+    loser_count = len(losers)
+    win_mean = np.sum(hist_win/winner_count*bin_centers)
+    loser_mean = np.sum(hist_lose/loser_count*bin_centers)
 
+    plt.bar(left=bin_left_edges, height=hist_win_normalized, width=bin_width, color='g')
+    plt.bar(left=bin_left_edges, height=-hist_lose_normalized, width=bin_width, color='r')
+    plt.plot(bin_centers, winning_percentage, 'ko', markersize=15)
+    plt.plot(win_mean, 0., 'g.', markersize=40, markeredgecolor='lightgreen', markeredgewidth=8)
+    plt.plot(loser_mean, 0., 'r.', markersize=40, markeredgecolor='pink', markeredgewidth=8)
 
     plt.title(title_string)
-    #plt.plot([bins[0], bins[-1]], [1., 1.], 'b--', linewidth=3)
-    #plt.axis(axes)
-    #plt.ylim(ymin=0)
-
-
-    #n_win, bins, patches = plt.hist(winners, bins=bins, normed=False, facecolor='green', alpha=0.5)
-    #n_lose, bins, patches = plt.hist(losers, bins=bins, normed=False, facecolor='red', alpha=0.5)
-    #plt.ylim(0., ylim)
-    #plt.title(title_string)
-    return #chi2_distance(n_win, n_lose)
+    plt.axis(axes)
+    return
 
 
 """
@@ -389,73 +396,73 @@ print "Full speed defenders, random attack, dynamic defense had a {:.1f}% winnin
 print "Full speed defenders, TTA attack, static defense had a {:.1f}% winning percentage".format(high_speed_static_TTA_results[0])
 print "Full speed defenders, TTA attack, turned defense had a {:.1f}% winning percentage".format(high_speed_turned_TTA_results[0])
 print "Full speed defenders, TTA attack, dynamic defense had a {:.1f}% winning percentage".format(high_speed_dynamic_TTA_results[0])
-"""
+
 plt.subplot(231)
 winner_loser_histogram_plot(high_speed_static_random_results[4][0], high_speed_static_random_results[4][1], plot_type="max_minTTA", title_string="def: static    atk: random")
-plt.ylabel("Winning %", fontsize=40)
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(232)
 winner_loser_histogram_plot(high_speed_turned_random_results[4][0], high_speed_turned_random_results[4][1], plot_type="max_minTTA", title_string="def: turned    atk: random")
 plt.subplot(233)
 winner_loser_histogram_plot(high_speed_dynamic_random_results[4][0], high_speed_dynamic_random_results[4][1], plot_type="max_minTTA", title_string="def: dynamic    atk: random")
 plt.subplot(234)
 winner_loser_histogram_plot(high_speed_static_TTA_results[4][0], high_speed_static_TTA_results[4][1], plot_type="max_minTTA", title_string="def: static    atk: TTA")
-plt.ylabel("Winning %", fontsize=40)
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(235)
 winner_loser_histogram_plot(high_speed_turned_TTA_results[4][0], high_speed_turned_TTA_results[4][1], plot_type="max_minTTA", title_string="def: turned    atk: TTA")
-plt.xlabel("Maximum minTTA at time of final attack", fontsize=40)
+plt.xlabel("Maximum minTTA at time of final attack", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(high_speed_dynamic_TTA_results[4][0], high_speed_dynamic_TTA_results[4][1], plot_type="max_minTTA", title_string="def: dynamic    atk: TTA")
 plt.show()
-"""
-"""
+
+
 plt.subplot(231)
 winner_loser_histogram_plot(high_speed_static_random_results[1][0], high_speed_static_random_results[1][1], plot_type="circularity", title_string="def: static    atk: random")
-plt.ylabel("Winning %", fontsize=40)
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(232)
 winner_loser_histogram_plot(high_speed_turned_random_results[1][0], high_speed_turned_random_results[1][1], plot_type="circularity", title_string="def: turned    atk: random")
 plt.subplot(233)
 winner_loser_histogram_plot(high_speed_dynamic_random_results[1][0], high_speed_dynamic_random_results[1][1], plot_type="circularity", title_string="def: dynamic    atk: random")
 plt.subplot(234)
 winner_loser_histogram_plot(high_speed_static_TTA_results[1][0], high_speed_static_TTA_results[1][1], plot_type="circularity", title_string="def: static    atk: TTA")
-plt.ylabel("Winning %", fontsize=40)
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(235)
 winner_loser_histogram_plot(high_speed_turned_TTA_results[1][0], high_speed_turned_TTA_results[1][1], plot_type="circularity", title_string="def: turned    atk: TTA")
-plt.xlabel("Circularity", fontsize=40)
+plt.xlabel("Circularity", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(high_speed_dynamic_TTA_results[1][0], high_speed_dynamic_TTA_results[1][1], plot_type="circularity", title_string="def: dynamic    atk: TTA")
 plt.show()
-"""
-"""
+
+
 plt.subplot(231)
 winner_loser_histogram_plot(high_speed_static_random_results[2][0], high_speed_static_random_results[2][1], plot_type="volatility", title_string="def: static    atk: random")
-plt.ylabel("Winning %", fontsize=40)
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(232)
 winner_loser_histogram_plot(high_speed_turned_random_results[2][0], high_speed_turned_random_results[2][1], plot_type="volatility", title_string="def: turned    atk: random")
 plt.subplot(233)
 winner_loser_histogram_plot(high_speed_dynamic_random_results[2][0], high_speed_dynamic_random_results[2][1], plot_type="volatility", title_string="def: dynamic    atk: random")
 plt.subplot(234)
 winner_loser_histogram_plot(high_speed_static_TTA_results[2][0], high_speed_static_TTA_results[2][1], plot_type="volatility", title_string="def: static    atk: TTA")
-plt.ylabel("Winning %", fontsize=40)
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(235)
 winner_loser_histogram_plot(high_speed_turned_TTA_results[2][0], high_speed_turned_TTA_results[2][1], plot_type="volatility", title_string="def: turned    atk: TTA")
-plt.xlabel("Volatility", fontsize=40)
+plt.xlabel("Volatility", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(high_speed_dynamic_TTA_results[2][0], high_speed_dynamic_TTA_results[2][1], plot_type="volatility", title_string="def: dynamic    atk: TTA")
 plt.show()
-"""
+
 plt.subplot(231)
 winner_loser_histogram_plot(high_speed_static_random_results[3][0], high_speed_static_random_results[3][1], plot_type="final_atk", title_string="def: static    atk: random")
-plt.ylabel("Winning %", fontsize=40)
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(232)
 winner_loser_histogram_plot(high_speed_turned_random_results[3][0], high_speed_turned_random_results[3][1], plot_type="final_atk", title_string="def: turned    atk: random")
 plt.subplot(233)
 winner_loser_histogram_plot(high_speed_dynamic_random_results[3][0], high_speed_dynamic_random_results[3][1], plot_type="final_atk", title_string="def: dynamic    atk: random")
 plt.subplot(234)
 winner_loser_histogram_plot(high_speed_static_TTA_results[3][0], high_speed_static_TTA_results[3][1], plot_type="final_atk", title_string="def: static    atk: TTA")
-plt.ylabel("Winning %", fontsize=40)
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(235)
 winner_loser_histogram_plot(high_speed_turned_TTA_results[3][0], high_speed_turned_TTA_results[3][1], plot_type="final_atk", title_string="def: turned    atk: TTA")
-plt.xlabel("Circularity at time of final attack", fontsize=40)
+plt.xlabel("Circularity at time of final attack", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(high_speed_dynamic_TTA_results[3][0], high_speed_dynamic_TTA_results[3][1], plot_type="final_atk", title_string="def: dynamic    atk: TTA")
 plt.show()
