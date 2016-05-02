@@ -24,7 +24,7 @@ results = db.results
 result = dict()
 
 SIMULATION_TYPE = "static_ring"  # "static_ring", "convoy"
-WITH_PLOTTING = True
+WITH_PLOTTING = False
 PLOT_MAIN = True
 PLOT_METRIC = True
 GLOBAL_DT = 0.05  # [s]
@@ -488,7 +488,6 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
     if result_string is None:
         result_string = "Simulation ran to max time without a result"
         defenders_win = False
-    print result_string + "  finished {} simulated seconds in {} real-time seconds".format(t,  time.time() - real_time_zero)
     ###np.savez(filename + ".npz", minTTA=np.array(plottingMetric.minTTA()), finalTime=t, defenders_win=defenders_win, attackHistory=plottingMetric.attackHistory)
     result["num_defenders"] = numDefenders
     result["num_attackers"] = numAttackers
@@ -501,7 +500,10 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
     result["attackHistory"] = Binary(cp.dumps(plottingMetric.attackHistory, protocol=2))
     result["minTTA"] = Binary(cp.dumps(np.array(plottingMetric.minTTA()), protocol=2))
     result["new"] = True
+    print result_string + "  finished {} simulated seconds in {} real-time seconds.  Inserting into db...".format(t,  time.time() - real_time_zero)
     #result_id = results.insert_one(result).inserted_id
+    write_result = results.insert_one(result)
+    asdf = 0
 
 if __name__ == '__main__':
     args = sys.argv

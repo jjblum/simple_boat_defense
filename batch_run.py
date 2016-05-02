@@ -5,11 +5,11 @@ import subprocess
 NUMBER_OF_RUNS = 100
 NUMBER_PER_BATCH = 25
 
-NUMBER_OF_DEFENDERS = [4]
-NUMBER_OF_ATTACKERS = [3]
-ATTACK_TYPES = ["random", "TTA"]  # random or TTA
-DEFENSE_TYPE = ["dynamic"]  # static, dynamic, or turned (static but facing along the dynamic circle)
-MAX_INTERCEPT_DISTANCE = [40.] # 30. or 40.
+NUMBER_OF_DEFENDERS = [5, 4]
+NUMBER_OF_ATTACKERS = [4, 3]
+ATTACK_TYPES = ["random"]  # random or TTA
+DEFENSE_TYPE = ["static", "turned"]  # static, dynamic, or turned (static but facing along the dynamic circle)
+MAX_INTERCEPT_DISTANCE = [40.]  # 30. or 40.
 DEFENDER_SPEED = ["high"]  # low or high
 
 path = os.path.dirname(os.path.realpath(__file__))

@@ -113,17 +113,17 @@ def gather_results(dictionary, collection=results, smoothness=False):
 def winner_loser_histogram_plot(winners, losers, title_string, plot_type="final_atk"):
 
     if plot_type == "final_atk":
-        bins = np.linspace(0.15, 0.45, 15)
-        axes = [0.15, 0.45, -100., 100.]
+        bins = np.linspace(0.15, 0.5, 20)
+        axes = [0.10, 0.5, -100., 100.]
     elif plot_type == "circularity":
-        bins = np.linspace(0.0, 0.4, 15)
-        axes = [0.0, 0.4, -100., 100.]
+        bins = np.linspace(0.0, 0.35, 25)
+        axes = [0.0, 0.35, -100., 100.]
     elif plot_type == "volatility":
-        bins = np.linspace(0., 0.30, 15)
-        axes = [0.05, 0.25, -100., 100.]
+        bins = np.linspace(0., 0.25, 20)
+        axes = [0.00, 0.275, -100., 100.]
     elif plot_type == "max_minTTA":
-        bins = np.linspace(5., 20., 15)
-        axes = [7., 20., -100., 100.]
+        bins = np.linspace(5., 25., 25)
+        axes = [6., 25., -100., 100.]
 
     hist_win, _ = np.histogram(winners, bins=bins, normed=False)
     hist_lose, _ = np.histogram(losers, bins=bins, normed=False)
@@ -155,241 +155,29 @@ def winner_loser_histogram_plot(winners, losers, title_string, plot_type="final_
     plt.axis(axes)
     return
 
+plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+plt.margins(0, 0)
 
-"""
-print "\nAll RUNS:"
-winning_results = results.find({"defenders_win": True})
-rounds = float(results.count())
-wins = float(winning_results.count())
-winning_results.close()
-winning_ratio = wins/rounds*100.
-print "The defenders had a {:.1f}% winning percentage".format(winning_ratio)
-"""
-
-"""
-print "\nRANDOM VS. TTA EXPLOIT ATTACK:"
-random_results = gather_results({"atk_type": "random"})
-print "Any random attack had a {:.1f}% winning percentage".format(random_results)
-TTA_results = gather_results({"atk_type": "TTA"})
-print "Any attack using TTA had a {:.1f}% winning percentage".format(TTA_results)
+high_speed_results = gather_results({"def_speed": "high", "new": True})
+high_speed_random_results = gather_results({"def_speed": "high", "atk_type":"random", "new": True})
+high_speed_TTA_results = gather_results({"def_speed": "high", "atk_type":"TTA", "new": True})
+high_speed_static_results = gather_results({"def_speed": "high", "def_type":"static", "new": True})
+high_speed_turned_results = gather_results({"def_speed": "high", "def_type":"turned", "new": True})
+high_speed_dynamic_results = gather_results({"def_speed": "high", "def_type":"dynamic", "new": True})
+high_speed_static_random_results = gather_results({"def_speed": "high", "def_type":"static", "atk_type":"random", "new": True}, smoothness=True)
+high_speed_turned_random_results = gather_results({"def_speed": "high", "def_type":"turned", "atk_type":"random", "new": True}, smoothness=True)
+high_speed_dynamic_random_results = gather_results({"def_speed": "high", "def_type":"dynamic", "atk_type":"random", "new": True}, smoothness=True)
+high_speed_static_TTA_results = gather_results({"def_speed": "high", "def_type":"static", "atk_type":"TTA", "new": True}, smoothness=True)
+high_speed_turned_TTA_results = gather_results({"def_speed": "high", "def_type":"turned", "atk_type":"TTA", "new": True}, smoothness=True)
+high_speed_dynamic_TTA_results = gather_results({"def_speed": "high", "def_type":"dynamic", "atk_type":"TTA", "new": True}, smoothness=True)
 
 
-print "\nSTATIC VS. DYNAMIC DEFENSE:"
-static_results = gather_results({"def_type": "static"}, smoothness=True)
-print "Any static defense had a {:.1f}% winning percentage".format(static_results[0])
-dynamic_results = gather_results({"def_type": "dynamic"}, smoothness=True)
-print "Any dynamic defense had a {:.1f}% winning percentage".format(dynamic_results[0])
-
-plt.subplot(121)
-winner_loser_histogram_plot(static_results[3][0], static_results[3][1], "static final attack circularity", "final_atk")
-plt.subplot(122)
-winner_loser_histogram_plot(dynamic_results[3][0], dynamic_results[3][1], "dynamic final attack circularity", "final_atk")
-plt.show()
-
-plt.subplot(221)
-static_circularity_histogram_distance = winner_loser_histogram_plot(static_results[1][0], static_results[1][1], "static circularity", "circularity")
-plt.subplot(222)
-dynamic_circularity_histogram_distance = winner_loser_histogram_plot(dynamic_results[1][0], dynamic_results[1][1], "dynamic circularity", "circularity")
-plt.subplot(223)
-static_volatility_histogram_distance = winner_loser_histogram_plot(static_results[2][0], static_results[2][1], "static volatility", "volatility")
-plt.subplot(224)
-dynamic_volatility_histogram_distance = winner_loser_histogram_plot(dynamic_results[2][0], dynamic_results[2][1], "dynamic volatility", "volatility")
-print "\nTTA SMOOTHNESS MEASURES:"
-print "Static circularity chi-squared distance between winners and losers = {:.3f}".format(static_circularity_histogram_distance)
-print "Dynamic circularity chi-squared distance between winners and losers = {:.3f}".format(dynamic_circularity_histogram_distance)
-print "Static voltatility chi-squared distance between winners and losers = {:.3f}".format(static_volatility_histogram_distance)
-print "Dynamic voltatility chi-squared distance between winners and losers = {:.3f}".format(dynamic_volatility_histogram_distance)
-plt.show()
-
-
-print "\nTTA ATTACK, STATIC VS. DYNAMIC DEFENSE:"
-TTA_static_results = gather_results({"atk_type": "TTA", "def_type": "static"})
-print "TTA attack, static defense had a {:.1f}% winning percentage".format(TTA_static_results)
-TTA_dynamic_results = gather_results({"atk_type": "TTA", "def_type": "dynamic"})
-print "TTA attack, dynamic defense had a {:.1f}% winning percentage".format(TTA_dynamic_results)
-
-
-print "\nRANDOM ATTACK, STATIC VS. DYNAMIC DEFENSE:"
-random_static_results = gather_results({"atk_type": "random", "def_type": "static"})
-print "random attack, static defense had a {:.1f}% winning percentage".format(random_static_results)
-random_dynamic_results = gather_results({"atk_type": "random", "def_type": "dynamic"})
-print "random attack, dynamic defense had a {:.1f}% winning percentage".format(random_dynamic_results)
-"""
-
-"""
-print "\n0 EXTRA DEFENDERS VS. 1 EXTRA DEFENDER VS. 2 EXTRA DEFENDERS:"
-zero_defender_results = gather_results({"num_attackers": 4, "num_defenders": 4}, smoothness=True)
-print "0 extra defenders had a {:.1f}% winning percentage".format(zero_defender_results[0])
-one_defender_results = gather_results(({"num_attackers": 4, "num_defenders": 5}, {"num_attackers": 3, "num_defenders": 4}), smoothness=True)
-print "1 extra defender had a {:.1f}% winning percentage".format(one_defender_results[0])
-two_defender_results = gather_results({"num_attackers": 3, "num_defenders": 5}, smoothness=True)
-print "2 extra defenders had a {:.1f}% winning percentage".format(two_defender_results[0])
-plt.subplot(231)
-zero_defender_circularity_histogram_distance = winner_loser_histogram_plot(zero_defender_results[1][0], zero_defender_results[1][1], "0-extra defenders circularity", "circularity")
-plt.subplot(232)
-one_defender_circularity_histogram_distance = winner_loser_histogram_plot(one_defender_results[1][0], one_defender_results[1][1], "1-extra defender circularity", "circularity")
-plt.subplot(233)
-two_defender_circularity_histogram_distance = winner_loser_histogram_plot(two_defender_results[1][0], two_defender_results[1][1], "2-extra defenders", "circularity")
-plt.subplot(234)
-zero_defender_volatility_histogram_distance = winner_loser_histogram_plot(zero_defender_results[2][0], zero_defender_results[2][1], "0-extra defenders volatility", "volatility")
-plt.subplot(235)
-one_defender_volatility_histogram_distance = winner_loser_histogram_plot(one_defender_results[2][0], one_defender_results[2][1], "1-extra defender volatility", "volatility")
-plt.subplot(236)
-two_defender_volatility_histogram_distance = winner_loser_histogram_plot(two_defender_results[2][0], two_defender_results[2][1], "2-extra defenders volatility", "volatility")
-plt.show()
-"""
-
-"""
-print "\n30 VS. 40 MAX INTERCEPT DISTANCE:"
-thirty_max_intercept_distance_results = gather_results({"max_allowable_intercept_distance": 30.}, smoothness=True)
-forty_max_intercept_distance_results = gather_results({"max_allowable_intercept_distance": 40.}, smoothness=True)
-print "Max intercept distance = 30 had a {:.1f}% winning percentage".format(thirty_max_intercept_distance_results[0])
-print "Max intercept distance = 40 had a {:.1f}% winning percentage".format(forty_max_intercept_distance_results[0])
-"""
-
-
-"""
-print "\nDEFENDER SPEED:"
-low_speed_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "low"}, smoothness=True)
-high_speed_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high"}, smoothness=True)
-plt.subplot(121)
-winner_loser_histogram_plot(high_speed_results[4][0], high_speed_results[4][1], "fast defender final attack max minTTA", plot_type="max_minTTA")
-plt.subplot(122)
-winner_loser_histogram_plot(low_speed_results[4][0], low_speed_results[4][1], "slow defender final attack max minTTA", plot_type="max_minTTA")
-plt.show()
-"""
-
-"""
-low_speed_random_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "low", "atk_type":"random"})
-low_speed_TTA_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "low", "atk_type":"TTA"})
-low_speed_static_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "low", "def_type":"static"})
-low_speed_turned_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "low", "def_type":"turned"})
-low_speed_dynamic_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "low", "def_type":"dynamic"})
-low_speed_static_random_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "low", "def_type":"static", "atk_type":"random"})
-low_speed_turned_random_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "low", "def_type":"turned", "atk_type":"random"})
-low_speed_dynamic_random_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "low", "def_type":"dynamic", "atk_type":"random"})
-low_speed_static_TTA_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "low", "def_type":"static", "atk_type":"TTA"})
-low_speed_turned_TTA_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "low", "def_type":"turned", "atk_type":"TTA"})
-low_speed_dynamic_TTA_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "low", "def_type":"dynamic", "atk_type":"TTA"})
-print "Full speed defenders had a {:.1f}% winning percentage".format(high_speed_results[0])
-print "Half thrust (70% top speed) defenders overall had a {:.1f}% winning percentage".format(low_speed_results[0])
-print "Half thrust (70% top speed) defenders, static defense had a {:.1f}% winning percentage".format(low_speed_static_results)
-print "Half thrust (70% top speed) defenders, turned defense had a {:.1f}% winning percentage".format(low_speed_turned_results)
-print "Half thrust (70% top speed) defenders, dynamic defense had a {:.1f}% winning percentage".format(low_speed_dynamic_results)
-print "Half thrust (70% top speed) defenders, random attack had a {:.1f}% winning percentage".format(low_speed_random_results)
-print "Half thrust (70% top speed) defenders, TTA attack had a {:.1f}% winning percentage".format(low_speed_TTA_results)
-print "Half thrust (70% top speed) defenders, random attack, static defense had a {:.1f}% winning percentage".format(low_speed_static_random_results)
-print "Half thrust (70% top speed) defenders, random attack, turned defense had a {:.1f}% winning percentage".format(low_speed_turned_random_results)
-print "Half thrust (70% top speed) defenders, random attack, dynamic defense had a {:.1f}% winning percentage".format(low_speed_dynamic_random_results)
-print "Half thrust (70% top speed) defenders, TTA attack, static defense had a {:.1f}% winning percentage".format(low_speed_static_TTA_results)
-print "Half thrust (70% top speed) defenders, TTA attack, turned defense had a {:.1f}% winning percentage".format(low_speed_turned_TTA_results)
-print "Half thrust (70% top speed) defenders, TTA attack, dynamic defense had a {:.1f}% winning percentage".format(low_speed_dynamic_TTA_results)
-
-plt.subplot(221)
-low_speed_circularity_histogram_distance = winner_loser_histogram_plot(low_speed_results[1][0], low_speed_results[1][1], "Fast defender circularity", "circularity")
-plt.subplot(222)
-high_speed_circularity_histogram_distance = winner_loser_histogram_plot(high_speed_results[1][0], high_speed_results[1][1], "Slow defender circularity", "circularity")
-plt.subplot(223)
-low_speed_volatility_histogram_distance = winner_loser_histogram_plot(low_speed_results[2][0], low_speed_results[2][1], "Fast defender volatility", "volatility")
-plt.subplot(224)
-high_speed_volatility_histogram_distance = winner_loser_histogram_plot(high_speed_results[2][0], high_speed_results[2][1], "Slow defender volatility", "volatility")
-plt.show()
-"""
-
-
-"""
-print "\nSTATIC VS DYNAMIC VS TURNED, 4 DEFENDERS AND 3 ATTACKERS"
-general_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high"})
-random_attack_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high", "atk_type": "random"})
-TTA_attack_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high", "atk_type": "TTA"})
-static_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_type": "static", "def_speed": "high"}, smoothness=True)
-turned_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_type": "turned", "def_speed": "high"}, smoothness=True)
-dynamic_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_type": "dynamic", "def_speed": "high"}, smoothness=True)
-print "All defenses, 4 defenders and 3 attackers, both attack types, had a {:.1f}% winning percentage".format(general_results)
-print "All defenses, 4 defenders and 3 attackers, random attack, had a {:.1f}% winning percentage".format(random_attack_results)
-print "All defenses, 4 defenders and 3 attackers, TTA attack, had a {:.1f}% winning percentage".format(TTA_attack_results)
-print "Static defense, 4 defenders and 3 attackers, had a {:.1f}% winning percentage".format(static_results[0])
-print "Turned defense, 4 defenders and 3 attackers, had a {:.1f}% winning percentage".format(turned_results[0])
-print "Dynamic defense, 4 defenders and 3 attackers, had a {:.1f}% winning percentage".format(dynamic_results[0])
-plt.subplot(231)
-static_circularity_histogram_distance = winner_loser_histogram_plot(static_results[1][0], static_results[1][1], "static circularity", "circularity")
-plt.subplot(232)
-turned_circularity_histogram_distance = winner_loser_histogram_plot(turned_results[1][0], turned_results[1][1], "turned circularity", "circularity")
-plt.subplot(233)
-dynamic_circularity_histogram_distancec = winner_loser_histogram_plot(dynamic_results[1][0], dynamic_results[1][1], "dynamic circularity", "circularity")
-plt.subplot(234)
-static_volatility_histogram_distance = winner_loser_histogram_plot(static_results[2][0], static_results[2][1], "static volatility", "volatility")
-plt.subplot(235)
-turned_volatility_histogram_distance = winner_loser_histogram_plot(turned_results[2][0], turned_results[2][1], "turned volatility", "volatility")
-plt.subplot(236)
-dynamic_volatility_histogram_distancec = winner_loser_histogram_plot(dynamic_results[2][0], dynamic_results[2][1], "dynamic volatility", "volatility")
-plt.show()
-
-
-static_random_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_type": "static", "atk_type": "random", "def_speed": "high"})
-turned_random_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_type": "turned", "atk_type": "random", "def_speed": "high"})
-dynamic_random_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_type": "dynamic", "atk_type": "random", "def_speed": "high"})
-static_TTA_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_type": "static", "atk_type": "TTA", "def_speed": "high"})
-turned_TTA_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_type": "turned", "atk_type": "TTA", "def_speed": "high"})
-dynamic_TTA_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_type": "dynamic", "atk_type": "TTA", "def_speed": "high"})
-print "Static defense, 4 defenders and 3 attackers, random attack had a {:.1f}% winning percentage".format(static_random_results)
-print "Turned defense, 4 defenders and 3 attackers, random attack had a {:.1f}% winning percentage".format(turned_random_results)
-print "Dynamic defense, 4 defenders and 3 attackers, random attack had a {:.1f}% winning percentage".format(dynamic_random_results)
-print "Static defense, 4 defenders and 3 attackers, TTA attack had a {:.1f}% winning percentage".format(static_TTA_results)
-print "Turned defense, 4 defenders and 3 attackers, TTA attack had a {:.1f}% winning percentage".format(turned_TTA_results)
-print "Dynamic defense, 4 defenders and 3 attackers, TTA attack had a {:.1f}% winning percentage".format(dynamic_TTA_results)
-"""
-
-"""
-high_speed_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high"})
-high_speed_random_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high", "atk_type":"random"})
-high_speed_TTA_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high", "atk_type":"TTA"})
-high_speed_static_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high", "def_type":"static"})
-high_speed_turned_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high", "def_type":"turned"})
-high_speed_dynamic_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high", "def_type":"dynamic"})
-high_speed_static_random_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high", "def_type":"static", "atk_type":"random"})
-high_speed_turned_random_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high", "def_type":"turned", "atk_type":"random"})
-high_speed_dynamic_random_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high", "def_type":"dynamic", "atk_type":"random"})
-high_speed_static_TTA_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high", "def_type":"static", "atk_type":"TTA"})
-high_speed_turned_TTA_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high", "def_type":"turned", "atk_type":"TTA"})
-high_speed_dynamic_TTA_results = gather_results({"num_defenders": 4, "num_attackers": 3, "def_speed": "high", "def_type":"dynamic", "atk_type":"TTA"})
 print "Full speed defenders had a {:.1f}% winning percentage".format(high_speed_results)
 print "Full speed  defenders, static defense had a {:.1f}% winning percentage".format(high_speed_static_results)
 print "Full speed defenders, turned defense had a {:.1f}% winning percentage".format(high_speed_turned_results)
 print "Full speed defenders, dynamic defense had a {:.1f}% winning percentage".format(high_speed_dynamic_results)
 print "Full speed defenders, random attack had a {:.1f}% winning percentage".format(high_speed_random_results)
 print "Full speed defenders, TTA attack had a {:.1f}% winning percentage".format(high_speed_TTA_results)
-print "Full speed defenders, random attack, static defense had a {:.1f}% winning percentage".format(high_speed_static_random_results)
-print "Full speed defenders, random attack, turned defense had a {:.1f}% winning percentage".format(high_speed_turned_random_results)
-print "Full speed defenders, random attack, dynamic defense had a {:.1f}% winning percentage".format(high_speed_dynamic_random_results)
-print "Full speed defenders, TTA attack, static defense had a {:.1f}% winning percentage".format(high_speed_static_TTA_results)
-print "Full speed defenders, TTA attack, turned defense had a {:.1f}% winning percentage".format(high_speed_turned_TTA_results)
-print "Full speed defenders, TTA attack, dynamic defense had a {:.1f}% winning percentage".format(high_speed_dynamic_TTA_results)
-"""
-
-
-#high_speed_results = gather_results({"def_speed": "high"})
-high_speed_random_results = gather_results({"def_speed": "high", "atk_type":"random"})
-high_speed_TTA_results = gather_results({"def_speed": "high", "atk_type":"TTA"})
-high_speed_static_results = gather_results({"def_speed": "high", "def_type":"static"})
-high_speed_turned_results = gather_results({"def_speed": "high", "def_type":"turned"})
-high_speed_dynamic_results = gather_results({"def_speed": "high", "def_type":"dynamic"})
-
-high_speed_static_random_results = gather_results({"def_speed": "high", "def_type":"static", "atk_type":"random"}, smoothness=True)
-high_speed_turned_random_results = gather_results({"def_speed": "high", "def_type":"turned", "atk_type":"random"}, smoothness=True)
-high_speed_dynamic_random_results = gather_results({"def_speed": "high", "def_type":"dynamic", "atk_type":"random", "new": False}, smoothness=True)
-high_speed_static_TTA_results = gather_results({"def_speed": "high", "def_type":"static", "atk_type":"TTA"}, smoothness=True)
-high_speed_turned_TTA_results = gather_results({"def_speed": "high", "def_type":"turned", "atk_type":"TTA"}, smoothness=True)
-high_speed_dynamic_TTA_results = gather_results({"def_speed": "high", "def_type":"dynamic", "atk_type":"TTA", "new": False}, smoothness=True)
-
-"""
-print "Full speed defenders had a {:.1f}% winning percentage".format(high_speed_results)
-print "Full speed  defenders, static defense had a {:.1f}% winning percentage".format(high_speed_static_results)
-print "Full speed defenders, turned defense had a {:.1f}% winning percentage".format(high_speed_turned_results)
-print "Full speed defenders, dynamic defense had a {:.1f}% winning percentage".format(high_speed_dynamic_results)
-print "Full speed defenders, random attack had a {:.1f}% winning percentage".format(high_speed_random_results)
-print "Full speed defenders, TTA attack had a {:.1f}% winning percentage".format(high_speed_TTA_results)
-"""
 print "Full speed defenders, random attack, static defense had a {:.1f}% winning percentage".format(high_speed_static_random_results[0])
 print "Full speed defenders, random attack, turned defense had a {:.1f}% winning percentage".format(high_speed_turned_random_results[0])
 print "Full speed defenders, random attack, dynamic defense had a {:.1f}% winning percentage".format(high_speed_dynamic_random_results[0])
@@ -397,11 +185,12 @@ print "Full speed defenders, TTA attack, static defense had a {:.1f}% winning pe
 print "Full speed defenders, TTA attack, turned defense had a {:.1f}% winning percentage".format(high_speed_turned_TTA_results[0])
 print "Full speed defenders, TTA attack, dynamic defense had a {:.1f}% winning percentage".format(high_speed_dynamic_TTA_results[0])
 
+plt.figure(figsize=(3.490, 1.870), dpi=275)
 plt.subplot(231)
 winner_loser_histogram_plot(high_speed_static_random_results[4][0], high_speed_static_random_results[4][1], plot_type="max_minTTA", title_string="def: static    atk: random")
 plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(232)
-winner_loser_histogram_plot(high_speed_turned_random_results[4][0], high_speed_turned_random_results[4][1], plot_type="max_minTTA", title_string="def: turned    atk: random")
+winner_loser_histogram_plot(high_speed_turned_random_results[4][0], high_speed_turned_random_results[4][1], plot_type="max_minTTA", title_string="Full speed\ndef: turned    atk: random")
 plt.subplot(233)
 winner_loser_histogram_plot(high_speed_dynamic_random_results[4][0], high_speed_dynamic_random_results[4][1], plot_type="max_minTTA", title_string="def: dynamic    atk: random")
 plt.subplot(234)
@@ -412,14 +201,15 @@ winner_loser_histogram_plot(high_speed_turned_TTA_results[4][0], high_speed_turn
 plt.xlabel("Maximum minTTA at time of final attack", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(high_speed_dynamic_TTA_results[4][0], high_speed_dynamic_TTA_results[4][1], plot_type="max_minTTA", title_string="def: dynamic    atk: TTA")
-plt.show()
+#plt.show()
+plt.savefig("fast_max_minTTA.png", bbox_inches='tight', dpi=275)
 
 
 plt.subplot(231)
 winner_loser_histogram_plot(high_speed_static_random_results[1][0], high_speed_static_random_results[1][1], plot_type="circularity", title_string="def: static    atk: random")
 plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(232)
-winner_loser_histogram_plot(high_speed_turned_random_results[1][0], high_speed_turned_random_results[1][1], plot_type="circularity", title_string="def: turned    atk: random")
+winner_loser_histogram_plot(high_speed_turned_random_results[1][0], high_speed_turned_random_results[1][1], plot_type="circularity", title_string="Full speed\ndef: turned    atk: random")
 plt.subplot(233)
 winner_loser_histogram_plot(high_speed_dynamic_random_results[1][0], high_speed_dynamic_random_results[1][1], plot_type="circularity", title_string="def: dynamic    atk: random")
 plt.subplot(234)
@@ -431,13 +221,13 @@ plt.xlabel("Circularity", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(high_speed_dynamic_TTA_results[1][0], high_speed_dynamic_TTA_results[1][1], plot_type="circularity", title_string="def: dynamic    atk: TTA")
 plt.show()
-
+plt.savefig("fast_circularity.png", bbox_inches='tight')
 
 plt.subplot(231)
 winner_loser_histogram_plot(high_speed_static_random_results[2][0], high_speed_static_random_results[2][1], plot_type="volatility", title_string="def: static    atk: random")
 plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(232)
-winner_loser_histogram_plot(high_speed_turned_random_results[2][0], high_speed_turned_random_results[2][1], plot_type="volatility", title_string="def: turned    atk: random")
+winner_loser_histogram_plot(high_speed_turned_random_results[2][0], high_speed_turned_random_results[2][1], plot_type="volatility", title_string="Full speed\ndef: turned    atk: random")
 plt.subplot(233)
 winner_loser_histogram_plot(high_speed_dynamic_random_results[2][0], high_speed_dynamic_random_results[2][1], plot_type="volatility", title_string="def: dynamic    atk: random")
 plt.subplot(234)
@@ -449,12 +239,13 @@ plt.xlabel("Volatility", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(high_speed_dynamic_TTA_results[2][0], high_speed_dynamic_TTA_results[2][1], plot_type="volatility", title_string="def: dynamic    atk: TTA")
 plt.show()
+plt.savefig("fast_volatility.png", bbox_inches='tight')
 
 plt.subplot(231)
 winner_loser_histogram_plot(high_speed_static_random_results[3][0], high_speed_static_random_results[3][1], plot_type="final_atk", title_string="def: static    atk: random")
 plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(232)
-winner_loser_histogram_plot(high_speed_turned_random_results[3][0], high_speed_turned_random_results[3][1], plot_type="final_atk", title_string="def: turned    atk: random")
+winner_loser_histogram_plot(high_speed_turned_random_results[3][0], high_speed_turned_random_results[3][1], plot_type="final_atk", title_string="Full speed\ndef: turned    atk: random")
 plt.subplot(233)
 winner_loser_histogram_plot(high_speed_dynamic_random_results[3][0], high_speed_dynamic_random_results[3][1], plot_type="final_atk", title_string="def: dynamic    atk: random")
 plt.subplot(234)
@@ -466,23 +257,106 @@ plt.xlabel("Circularity at time of final attack", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(high_speed_dynamic_TTA_results[3][0], high_speed_dynamic_TTA_results[3][1], plot_type="final_atk", title_string="def: dynamic    atk: TTA")
 plt.show()
+plt.savefig("fast_final_atk_circularity.png", bbox_inches='tight')
 
 
-"""
+low_speed_results = gather_results({"def_speed": "low", "new": True})
+low_speed_random_results = gather_results({"def_speed": "low", "atk_type":"random", "new": True})
+low_speed_TTA_results = gather_results({"def_speed": "low", "atk_type":"TTA", "new": True})
+low_speed_static_results = gather_results({"def_speed": "low", "def_type":"static", "new": True})
+low_speed_turned_results = gather_results({"def_speed": "low", "def_type":"turned", "new": True})
+low_speed_dynamic_results = gather_results({"def_speed": "low", "def_type":"dynamic", "new": True})
+low_speed_static_random_results = gather_results({"def_speed": "low", "def_type":"static", "atk_type":"random", "new": True}, smoothness=True)
+low_speed_turned_random_results = gather_results({"def_speed": "low", "def_type":"turned", "atk_type":"random", "new": True}, smoothness=True)
+low_speed_dynamic_random_results = gather_results({"def_speed": "low", "def_type":"dynamic", "atk_type":"random", "new": True}, smoothness=True)
+low_speed_static_TTA_results = gather_results({"def_speed": "low", "def_type":"static", "atk_type":"TTA", "new": True}, smoothness=True)
+low_speed_turned_TTA_results = gather_results({"def_speed": "low", "def_type":"turned", "atk_type":"TTA", "new": True}, smoothness=True)
+low_speed_dynamic_TTA_results = gather_results({"def_speed": "low", "def_type":"dynamic", "atk_type":"TTA", "new": True}, smoothness=True)
+print "Half thrust (70% top speed) defenders overall had a {:.1f}% winning percentage".format(low_speed_results)
+print "Half thrust (70% top speed) defenders, static defense had a {:.1f}% winning percentage".format(low_speed_static_results)
+print "Half thrust (70% top speed) defenders, turned defense had a {:.1f}% winning percentage".format(low_speed_turned_results)
+print "Half thrust (70% top speed) defenders, dynamic defense had a {:.1f}% winning percentage".format(low_speed_dynamic_results)
+print "Half thrust (70% top speed) defenders, random attack had a {:.1f}% winning percentage".format(low_speed_random_results)
+print "Half thrust (70% top speed) defenders, TTA attack had a {:.1f}% winning percentage".format(low_speed_TTA_results)
+print "Half thrust (70% top speed) defenders, random attack, static defense had a {:.1f}% winning percentage".format(low_speed_static_random_results[0])
+print "Half thrust (70% top speed) defenders, random attack, turned defense had a {:.1f}% winning percentage".format(low_speed_turned_random_results[0])
+print "Half thrust (70% top speed) defenders, random attack, dynamic defense had a {:.1f}% winning percentage".format(low_speed_dynamic_random_results[0])
+print "Half thrust (70% top speed) defenders, TTA attack, static defense had a {:.1f}% winning percentage".format(low_speed_static_TTA_results[0])
+print "Half thrust (70% top speed) defenders, TTA attack, turned defense had a {:.1f}% winning percentage".format(low_speed_turned_TTA_results[0])
+print "Half thrust (70% top speed) defenders, TTA attack, dynamic defense had a {:.1f}% winning percentage".format(low_speed_dynamic_TTA_results[0])
 plt.subplot(231)
-static_circularity_histogram_distance = winner_loser_histogram_plot(high_speed_static_results[1][0], high_speed_static_results[1][1], "static circularity", "circularity")
+winner_loser_histogram_plot(low_speed_static_random_results[4][0], low_speed_static_random_results[4][1], plot_type="max_minTTA", title_string="def: static    atk: random")
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(232)
-turned_circularity_histogram_distance = winner_loser_histogram_plot(high_speed_turned_results[1][0], high_speed_turned_results[1][1], "turned circularity", "circularity")
+winner_loser_histogram_plot(low_speed_turned_random_results[4][0], low_speed_turned_random_results[4][1], plot_type="max_minTTA", title_string="70% speed\ndef: turned    atk: random")
 plt.subplot(233)
-dynamic_circularity_histogram_distancec = winner_loser_histogram_plot(high_speed_dynamic_results[1][0], high_speed_dynamic_results[1][1], "dynamic circularity", "circularity")
+winner_loser_histogram_plot(low_speed_dynamic_random_results[4][0], low_speed_dynamic_random_results[4][1], plot_type="max_minTTA", title_string="def: dynamic    atk: random")
 plt.subplot(234)
-static_volatility_histogram_distance = winner_loser_histogram_plot(high_speed_static_results[2][0], high_speed_static_results[2][1], "static volatility", "volatility")
+winner_loser_histogram_plot(low_speed_static_TTA_results[4][0], low_speed_static_TTA_results[4][1], plot_type="max_minTTA", title_string="def: static    atk: TTA")
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(235)
-turned_volatility_histogram_distance = winner_loser_histogram_plot(high_speed_turned_results[2][0], high_speed_turned_results[2][1], "turned volatility", "volatility")
+winner_loser_histogram_plot(low_speed_turned_TTA_results[4][0], low_speed_turned_TTA_results[4][1], plot_type="max_minTTA", title_string="def: turned    atk: TTA")
+plt.xlabel("Maximum minTTA at time of final attack", fontsize=50)
 plt.subplot(236)
-dynamic_volatility_histogram_distancec = winner_loser_histogram_plot(high_speed_dynamic_results[2][0], high_speed_dynamic_results[2][1], "dynamic volatility", "volatility")
+winner_loser_histogram_plot(low_speed_dynamic_TTA_results[4][0], low_speed_dynamic_TTA_results[4][1], plot_type="max_minTTA", title_string="def: dynamic    atk: TTA")
 plt.show()
-"""
+plt.savefig("slow_max_minTTA.png", bbox_inches='tight')
+
+
+plt.subplot(231)
+winner_loser_histogram_plot(low_speed_static_random_results[1][0], low_speed_static_random_results[1][1], plot_type="circularity", title_string="def: static    atk: random")
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
+plt.subplot(232)
+winner_loser_histogram_plot(low_speed_turned_random_results[1][0], low_speed_turned_random_results[1][1], plot_type="circularity", title_string="70% speed\ndef: turned    atk: random")
+plt.subplot(233)
+winner_loser_histogram_plot(low_speed_dynamic_random_results[1][0], low_speed_dynamic_random_results[1][1], plot_type="circularity", title_string="def: dynamic    atk: random")
+plt.subplot(234)
+winner_loser_histogram_plot(low_speed_static_TTA_results[1][0], low_speed_static_TTA_results[1][1], plot_type="circularity", title_string="def: static    atk: TTA")
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
+plt.subplot(235)
+winner_loser_histogram_plot(low_speed_turned_TTA_results[1][0], low_speed_turned_TTA_results[1][1], plot_type="circularity", title_string="def: turned    atk: TTA")
+plt.xlabel("Circularity", fontsize=50)
+plt.subplot(236)
+winner_loser_histogram_plot(low_speed_dynamic_TTA_results[1][0], low_speed_dynamic_TTA_results[1][1], plot_type="circularity", title_string="def: dynamic    atk: TTA")
+plt.show()
+plt.savefig("slow_circularity.png", bbox_inches='tight')
+
+plt.subplot(231)
+winner_loser_histogram_plot(low_speed_static_random_results[2][0], low_speed_static_random_results[2][1], plot_type="volatility", title_string="def: static    atk: random")
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
+plt.subplot(232)
+winner_loser_histogram_plot(low_speed_turned_random_results[2][0], low_speed_turned_random_results[2][1], plot_type="volatility", title_string="70% speed\ndef: turned    atk: random")
+plt.subplot(233)
+winner_loser_histogram_plot(low_speed_dynamic_random_results[2][0], low_speed_dynamic_random_results[2][1], plot_type="volatility", title_string="def: dynamic    atk: random")
+plt.subplot(234)
+winner_loser_histogram_plot(low_speed_static_TTA_results[2][0], low_speed_static_TTA_results[2][1], plot_type="volatility", title_string="def: static    atk: TTA")
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
+plt.subplot(235)
+winner_loser_histogram_plot(low_speed_turned_TTA_results[2][0], low_speed_turned_TTA_results[2][1], plot_type="volatility", title_string="def: turned    atk: TTA")
+plt.xlabel("Volatility", fontsize=50)
+plt.subplot(236)
+winner_loser_histogram_plot(low_speed_dynamic_TTA_results[2][0], low_speed_dynamic_TTA_results[2][1], plot_type="volatility", title_string="def: dynamic    atk: TTA")
+plt.show()
+plt.savefig("slow_volatility.png", bbox_inches='tight')
+
+plt.subplot(231)
+winner_loser_histogram_plot(low_speed_static_random_results[3][0], low_speed_static_random_results[3][1], plot_type="final_atk", title_string="def: static    atk: random")
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
+plt.subplot(232)
+winner_loser_histogram_plot(low_speed_turned_random_results[3][0], low_speed_turned_random_results[3][1], plot_type="final_atk", title_string="70% speed\ndef: turned    atk: random")
+plt.subplot(233)
+winner_loser_histogram_plot(low_speed_dynamic_random_results[3][0], low_speed_dynamic_random_results[3][1], plot_type="final_atk", title_string="def: dynamic    atk: random")
+plt.subplot(234)
+winner_loser_histogram_plot(low_speed_static_TTA_results[3][0], low_speed_static_TTA_results[3][1], plot_type="final_atk", title_string="def: static    atk: TTA")
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
+plt.subplot(235)
+winner_loser_histogram_plot(low_speed_turned_TTA_results[3][0], low_speed_turned_TTA_results[3][1], plot_type="final_atk", title_string="def: turned    atk: TTA")
+plt.xlabel("Circularity at time of final attack", fontsize=50)
+plt.subplot(236)
+winner_loser_histogram_plot(low_speed_dynamic_TTA_results[3][0], low_speed_dynamic_TTA_results[3][1], plot_type="final_atk", title_string="def: dynamic    atk: TTA")
+plt.show()
+plt.savefig("slow_final_atk_circularity.png", bbox_inches='tight')
+
 
 """
 print "\nNUMBER OF EXTRA DEFENDERS"
@@ -493,6 +367,7 @@ print "0-extra defenders had a {:.1f}% winning percentage".format(zero_results[0
 print "1-extra defender had a {:.1f}% winning percentage".format(one_results[0])
 print "2-extra defenders had a {:.1f}% winning percentage".format(two_results[0])
 """
+
 """
 plt.subplot(231)
 static_circularity_histogram_distance = winner_loser_histogram_plot(zero_results[1][0], zero_results[1][1], "0-extra defenders circularity", "circularity")
