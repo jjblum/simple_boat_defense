@@ -124,7 +124,7 @@ def main():
         #ax.plot_surface(R, TH, coeffs[0]*TH + coeffs[1]*R - T_th_r_u0[:, :, 0], color='r')
         #ax.scatter(R, np.rad2deg(TH), coeffs[0]*TH + coeffs[1]*R + coeffs[2]*2.5 - T_th_r_u0[:, :, -1], color='r', alpha=0.5)
 
-        plt.rcParams.update({'font.size': 18})
+        plt.rcParams.update({'font.size': 40})
         error = coeffs[0]*TH + coeffs[1]*R + coeffs[2]*2.5 - T_th_r_u0[:, :, -1]
         fig, ax = plt.subplots()
         ax.imshow(error, extent=[0, 30, 0, 180],  aspect="auto")

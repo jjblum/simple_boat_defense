@@ -31,11 +31,14 @@ def minTTA_smoothness(db_results):
     volatility = list()
     final_attack_circularity = list()
     final_attack_max_minTTA = list()
+    mean_max_minTTA = list()  # time average of the maximum around the perimeter
     for result in db_results:
         final_time = result["final_time"]
         minTTA = cp.loads(result["minTTA"])
         T = minTTA.shape[0]
         meanOverTime_minTTA = np.mean(minTTA, axis=0)
+        maxOverAngle_minTTA = np.max(minTTA, axis=2)
+        mean_max_minTTA.append(np.mean(maxOverAngle_minTTA[:, 1]))
         meanOverAngle_minTTA = np.mean(minTTA, axis=2)
         volatility.append(np.sum(np.abs(np.diff(meanOverAngle_minTTA, axis=0)))/T)  # the change per step through time - like a measure of volatility
         circularity.append(np.sum(np.abs(np.diff(meanOverTime_minTTA, axis=1)))/360.)  # the change per angle - like a measure of circularity (how circular it is)
@@ -48,8 +51,8 @@ def minTTA_smoothness(db_results):
             attackHistory[:, 1] = np.floor(attackHistory[:, 1])
             final_attack_minTTA = minTTA[np.floor(attackHistory[-1, 0]*metric_Hz), :, :]
             final_attack_circularity.append(np.sum(np.abs(np.diff(final_attack_minTTA, axis=1)))/360.)
-            final_attack_max_minTTA.append(np.max(minTTA[np.floor(attackHistory[-1, 0]*metric_Hz), 1, :], axis=0))
-    return circularity, volatility, final_attack_circularity, final_attack_max_minTTA
+            final_attack_max_minTTA.append(np.max(minTTA[np.floor(attackHistory[-1, 0]*metric_Hz), 1, :], axis=0))  # 20 meter radius
+    return circularity, volatility, final_attack_circularity, final_attack_max_minTTA, mean_max_minTTA
 
 
 def gather_results(dictionary, collection=results, smoothness=False):
@@ -101,12 +104,12 @@ def gather_results(dictionary, collection=results, smoothness=False):
     wins = float(winning_results.count())
     wins_ratio = wins/rounds*100.
     if smoothness:
-        losing_circularity, losing_volatility, losing_final_atk_circularity, losing_final_atk_max_minTTA = minTTA_smoothness(losing_results)
-        winning_circularity, winning_volatility, winning_final_atk_circularity, winning_final_atk_max_minTTA = minTTA_smoothness(winning_results)
+        losing_circularity, losing_volatility, losing_final_atk_circularity, losing_final_atk_max_minTTA, losing_mean_max_minTTA = minTTA_smoothness(losing_results)
+        winning_circularity, winning_volatility, winning_final_atk_circularity, winning_final_atk_max_minTTA, winning_mean_max_minTTA = minTTA_smoothness(winning_results)
         general_results.close()
         winning_results.close()
         losing_results.close()
-        return wins_ratio, (winning_circularity, losing_circularity), (winning_volatility, losing_volatility), (winning_final_atk_circularity, losing_final_atk_circularity), (winning_final_atk_max_minTTA, losing_final_atk_max_minTTA)
+        return wins_ratio, (winning_circularity, losing_circularity), (winning_volatility, losing_volatility), (winning_final_atk_circularity, losing_final_atk_circularity), (winning_final_atk_max_minTTA, losing_final_atk_max_minTTA), (winning_mean_max_minTTA, losing_mean_max_minTTA)
     else:
         return wins_ratio
 
@@ -124,6 +127,9 @@ def winner_loser_histogram_plot(winners, losers, title_string, plot_type="final_
     elif plot_type == "max_minTTA":
         bins = np.linspace(5., 25., 25)
         axes = [6., 25., -100., 100.]
+    elif plot_type == "mean_max_minTTA":
+        bins = np.linspace(5., 25., 25)
+        axes = [5., 25., -100., 100.]
 
     hist_win, _ = np.histogram(winners, bins=bins, normed=False)
     hist_lose, _ = np.histogram(losers, bins=bins, normed=False)
@@ -142,8 +148,10 @@ def winner_loser_histogram_plot(winners, losers, title_string, plot_type="final_
     bin_centers = bin_left_edges+bin_width/2.
     winner_count = len(winners)
     loser_count = len(losers)
-    win_mean = np.sum(hist_win/winner_count*bin_centers)
-    loser_mean = np.sum(hist_lose/loser_count*bin_centers)
+    #win_mean = np.sum(hist_win/winner_count*bin_centers)
+    win_mean = np.mean(winners)
+    #loser_mean = np.sum(hist_lose/loser_count*bin_centers)
+    loser_mean = np.mean(losers)
 
     plt.bar(left=bin_left_edges, height=hist_win_normalized, width=bin_width, color='g')
     plt.bar(left=bin_left_edges, height=-hist_lose_normalized, width=bin_width, color='r')
@@ -157,6 +165,9 @@ def winner_loser_histogram_plot(winners, losers, title_string, plot_type="final_
 
 plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
 plt.margins(0, 0)
+my_dpi = 100.
+my_pixel_width = 3490.
+my_pixel_height = 1970.
 
 high_speed_results = gather_results({"def_speed": "high", "new": True})
 high_speed_random_results = gather_results({"def_speed": "high", "atk_type":"random", "new": True})
@@ -185,7 +196,8 @@ print "Full speed defenders, TTA attack, static defense had a {:.1f}% winning pe
 print "Full speed defenders, TTA attack, turned defense had a {:.1f}% winning percentage".format(high_speed_turned_TTA_results[0])
 print "Full speed defenders, TTA attack, dynamic defense had a {:.1f}% winning percentage".format(high_speed_dynamic_TTA_results[0])
 
-plt.figure(figsize=(3.490, 1.870), dpi=275)
+fig = plt.figure()
+fig.set_size_inches(my_pixel_width/my_dpi, my_pixel_height/my_dpi)
 plt.subplot(231)
 winner_loser_histogram_plot(high_speed_static_random_results[4][0], high_speed_static_random_results[4][1], plot_type="max_minTTA", title_string="def: static    atk: random")
 plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
@@ -198,13 +210,14 @@ winner_loser_histogram_plot(high_speed_static_TTA_results[4][0], high_speed_stat
 plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(235)
 winner_loser_histogram_plot(high_speed_turned_TTA_results[4][0], high_speed_turned_TTA_results[4][1], plot_type="max_minTTA", title_string="def: turned    atk: TTA")
-plt.xlabel("Maximum minTTA at time of final attack", fontsize=50)
+plt.xlabel("Maximum minTTA at time of final attack (s)", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(high_speed_dynamic_TTA_results[4][0], high_speed_dynamic_TTA_results[4][1], plot_type="max_minTTA", title_string="def: dynamic    atk: TTA")
 #plt.show()
-plt.savefig("fast_max_minTTA.png", bbox_inches='tight', dpi=275)
+plt.savefig("fast_max_minTTA.png", bbox_inches='tight', dpi=my_dpi)
 
-
+fig = plt.figure()
+fig.set_size_inches(my_pixel_width/my_dpi, my_pixel_height/my_dpi)
 plt.subplot(231)
 winner_loser_histogram_plot(high_speed_static_random_results[1][0], high_speed_static_random_results[1][1], plot_type="circularity", title_string="def: static    atk: random")
 plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
@@ -220,9 +233,11 @@ winner_loser_histogram_plot(high_speed_turned_TTA_results[1][0], high_speed_turn
 plt.xlabel("Circularity", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(high_speed_dynamic_TTA_results[1][0], high_speed_dynamic_TTA_results[1][1], plot_type="circularity", title_string="def: dynamic    atk: TTA")
-plt.show()
-plt.savefig("fast_circularity.png", bbox_inches='tight')
+#plt.show()
+plt.savefig("fast_circularity.png", bbox_inches='tight', dpi=my_dpi)
 
+fig = plt.figure()
+fig.set_size_inches(my_pixel_width/my_dpi, my_pixel_height/my_dpi)
 plt.subplot(231)
 winner_loser_histogram_plot(high_speed_static_random_results[2][0], high_speed_static_random_results[2][1], plot_type="volatility", title_string="def: static    atk: random")
 plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
@@ -238,9 +253,11 @@ winner_loser_histogram_plot(high_speed_turned_TTA_results[2][0], high_speed_turn
 plt.xlabel("Volatility", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(high_speed_dynamic_TTA_results[2][0], high_speed_dynamic_TTA_results[2][1], plot_type="volatility", title_string="def: dynamic    atk: TTA")
-plt.show()
-plt.savefig("fast_volatility.png", bbox_inches='tight')
+#plt.show()
+plt.savefig("fast_volatility.png", bbox_inches='tight', dpi=my_dpi)
 
+fig = plt.figure()
+fig.set_size_inches(my_pixel_width/my_dpi, my_pixel_height/my_dpi)
 plt.subplot(231)
 winner_loser_histogram_plot(high_speed_static_random_results[3][0], high_speed_static_random_results[3][1], plot_type="final_atk", title_string="def: static    atk: random")
 plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
@@ -256,8 +273,29 @@ winner_loser_histogram_plot(high_speed_turned_TTA_results[3][0], high_speed_turn
 plt.xlabel("Circularity at time of final attack", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(high_speed_dynamic_TTA_results[3][0], high_speed_dynamic_TTA_results[3][1], plot_type="final_atk", title_string="def: dynamic    atk: TTA")
-plt.show()
-plt.savefig("fast_final_atk_circularity.png", bbox_inches='tight')
+#plt.show()
+plt.savefig("fast_final_atk_circularity.png", bbox_inches='tight', dpi=my_dpi)
+
+
+fig = plt.figure()
+fig.set_size_inches(my_pixel_width/my_dpi, my_pixel_height/my_dpi)
+plt.subplot(231)
+winner_loser_histogram_plot(high_speed_static_random_results[5][0], high_speed_static_random_results[5][1], plot_type="mean_max_minTTA", title_string="def: static    atk: random")
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
+plt.subplot(232)
+winner_loser_histogram_plot(high_speed_turned_random_results[5][0], high_speed_turned_random_results[5][1], plot_type="mean_max_minTTA", title_string="Full speed\ndef: turned    atk: random")
+plt.subplot(233)
+winner_loser_histogram_plot(high_speed_dynamic_random_results[5][0], high_speed_dynamic_random_results[5][1], plot_type="mean_max_minTTA", title_string="def: dynamic    atk: random")
+plt.subplot(234)
+winner_loser_histogram_plot(high_speed_static_TTA_results[5][0], high_speed_static_TTA_results[5][1], plot_type="mean_max_minTTA", title_string="def: static    atk: TTA")
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
+plt.subplot(235)
+winner_loser_histogram_plot(high_speed_turned_TTA_results[5][0], high_speed_turned_TTA_results[5][1], plot_type="mean_max_minTTA", title_string="def: turned    atk: TTA")
+plt.xlabel("Time average of maximum minTTA (s)", fontsize=50)
+plt.subplot(236)
+winner_loser_histogram_plot(high_speed_dynamic_TTA_results[5][0], high_speed_dynamic_TTA_results[5][1], plot_type="mean_max_minTTA", title_string="def: dynamic    atk: TTA")
+#plt.show()
+plt.savefig("fast_mean_max_minTTA.png", bbox_inches='tight', dpi=my_dpi)
 
 
 low_speed_results = gather_results({"def_speed": "low", "new": True})
@@ -284,6 +322,8 @@ print "Half thrust (70% top speed) defenders, random attack, dynamic defense had
 print "Half thrust (70% top speed) defenders, TTA attack, static defense had a {:.1f}% winning percentage".format(low_speed_static_TTA_results[0])
 print "Half thrust (70% top speed) defenders, TTA attack, turned defense had a {:.1f}% winning percentage".format(low_speed_turned_TTA_results[0])
 print "Half thrust (70% top speed) defenders, TTA attack, dynamic defense had a {:.1f}% winning percentage".format(low_speed_dynamic_TTA_results[0])
+fig = plt.figure()
+fig.set_size_inches(my_pixel_width/my_dpi, my_pixel_height/my_dpi)
 plt.subplot(231)
 winner_loser_histogram_plot(low_speed_static_random_results[4][0], low_speed_static_random_results[4][1], plot_type="max_minTTA", title_string="def: static    atk: random")
 plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
@@ -296,13 +336,14 @@ winner_loser_histogram_plot(low_speed_static_TTA_results[4][0], low_speed_static
 plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
 plt.subplot(235)
 winner_loser_histogram_plot(low_speed_turned_TTA_results[4][0], low_speed_turned_TTA_results[4][1], plot_type="max_minTTA", title_string="def: turned    atk: TTA")
-plt.xlabel("Maximum minTTA at time of final attack", fontsize=50)
+plt.xlabel("Maximum minTTA at time of final attack (s)", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(low_speed_dynamic_TTA_results[4][0], low_speed_dynamic_TTA_results[4][1], plot_type="max_minTTA", title_string="def: dynamic    atk: TTA")
-plt.show()
-plt.savefig("slow_max_minTTA.png", bbox_inches='tight')
+#plt.show()
+plt.savefig("slow_max_minTTA.png", bbox_inches='tight', dpi=my_dpi)
 
-
+fig = plt.figure()
+fig.set_size_inches(my_pixel_width/my_dpi, my_pixel_height/my_dpi)
 plt.subplot(231)
 winner_loser_histogram_plot(low_speed_static_random_results[1][0], low_speed_static_random_results[1][1], plot_type="circularity", title_string="def: static    atk: random")
 plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
@@ -318,9 +359,11 @@ winner_loser_histogram_plot(low_speed_turned_TTA_results[1][0], low_speed_turned
 plt.xlabel("Circularity", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(low_speed_dynamic_TTA_results[1][0], low_speed_dynamic_TTA_results[1][1], plot_type="circularity", title_string="def: dynamic    atk: TTA")
-plt.show()
-plt.savefig("slow_circularity.png", bbox_inches='tight')
+#plt.show()
+plt.savefig("slow_circularity.png", bbox_inches='tight', dpi=my_dpi)
 
+fig = plt.figure()
+fig.set_size_inches(my_pixel_width/my_dpi, my_pixel_height/my_dpi)
 plt.subplot(231)
 winner_loser_histogram_plot(low_speed_static_random_results[2][0], low_speed_static_random_results[2][1], plot_type="volatility", title_string="def: static    atk: random")
 plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
@@ -336,9 +379,11 @@ winner_loser_histogram_plot(low_speed_turned_TTA_results[2][0], low_speed_turned
 plt.xlabel("Volatility", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(low_speed_dynamic_TTA_results[2][0], low_speed_dynamic_TTA_results[2][1], plot_type="volatility", title_string="def: dynamic    atk: TTA")
-plt.show()
-plt.savefig("slow_volatility.png", bbox_inches='tight')
+#plt.show()
+plt.savefig("slow_volatility.png", bbox_inches='tight', dpi=my_dpi)
 
+fig = plt.figure()
+fig.set_size_inches(my_pixel_width/my_dpi, my_pixel_height/my_dpi)
 plt.subplot(231)
 winner_loser_histogram_plot(low_speed_static_random_results[3][0], low_speed_static_random_results[3][1], plot_type="final_atk", title_string="def: static    atk: random")
 plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
@@ -354,9 +399,28 @@ winner_loser_histogram_plot(low_speed_turned_TTA_results[3][0], low_speed_turned
 plt.xlabel("Circularity at time of final attack", fontsize=50)
 plt.subplot(236)
 winner_loser_histogram_plot(low_speed_dynamic_TTA_results[3][0], low_speed_dynamic_TTA_results[3][1], plot_type="final_atk", title_string="def: dynamic    atk: TTA")
-plt.show()
-plt.savefig("slow_final_atk_circularity.png", bbox_inches='tight')
+#plt.show()
+plt.savefig("slow_final_atk_circularity.png", bbox_inches='tight', dpi=my_dpi)
 
+fig = plt.figure()
+fig.set_size_inches(my_pixel_width/my_dpi, my_pixel_height/my_dpi)
+plt.subplot(231)
+winner_loser_histogram_plot(low_speed_static_random_results[5][0], low_speed_static_random_results[5][1], plot_type="mean_max_minTTA", title_string="def: static    atk: random")
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
+plt.subplot(232)
+winner_loser_histogram_plot(low_speed_turned_random_results[5][0], low_speed_turned_random_results[5][1], plot_type="mean_max_minTTA", title_string="70% speed\ndef: turned    atk: random")
+plt.subplot(233)
+winner_loser_histogram_plot(low_speed_dynamic_random_results[5][0], low_speed_dynamic_random_results[5][1], plot_type="mean_max_minTTA", title_string="def: dynamic    atk: random")
+plt.subplot(234)
+winner_loser_histogram_plot(low_speed_static_TTA_results[5][0], low_speed_static_TTA_results[5][1], plot_type="mean_max_minTTA", title_string="def: static    atk: TTA")
+plt.ylabel("Win/Loss Counts (bars)\nWinning % (black dots)\nWin/Loss Mean (colored dots)", fontsize=40)
+plt.subplot(235)
+winner_loser_histogram_plot(low_speed_turned_TTA_results[5][0], low_speed_turned_TTA_results[5][1], plot_type="mean_max_minTTA", title_string="def: turned    atk: TTA")
+plt.xlabel("Time average of maximum minTTA (s)", fontsize=50)
+plt.subplot(236)
+winner_loser_histogram_plot(low_speed_dynamic_TTA_results[5][0], low_speed_dynamic_TTA_results[5][1], plot_type="mean_max_minTTA", title_string="def: dynamic    atk: TTA")
+#plt.show()
+plt.savefig("slow_mean_max_minTTA.png", bbox_inches='tight', dpi=my_dpi)
 
 """
 print "\nNUMBER OF EXTRA DEFENDERS"

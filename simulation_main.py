@@ -500,6 +500,8 @@ def main(numDefenders=DEFENDER_COUNT, numAttackers=ATTACKER_COUNT, max_allowable
     result["attackHistory"] = Binary(cp.dumps(plottingMetric.attackHistory, protocol=2))
     result["minTTA"] = Binary(cp.dumps(np.array(plottingMetric.minTTA()), protocol=2))
     result["new"] = True
+    result["balance"] = True
+    result["extra"] = True
     print result_string + "  finished {} simulated seconds in {} real-time seconds.  Inserting into db...".format(t,  time.time() - real_time_zero)
     #result_id = results.insert_one(result).inserted_id
     write_result = results.insert_one(result)
